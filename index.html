@@ -261,16 +261,19 @@ function resize(){
   bg.width  = canvas.width;
   bg.height = canvas.height;
 
-  // A forearm laid across the lower screen, running off both edges.
-  arm.h = Math.min(58, H * 0.078);             // half-thickness of the forearm
+  /* A forearm entering from the left and ending in a hand on the right. It used
+     to be a full-width slab, which in the campground read as a fallen log; the
+     taper and the hand are what make it legible as an arm. */
+  arm.h = Math.min(44, H * 0.060);             // half-thickness at the elbow
   arm.x = W / 2;
-  arm.y = H - Math.max(120, H * 0.17);         // centreline, always clear of the edge
+  arm.y = H - Math.max(130, H * 0.175);        // centreline, always clear of the edge
   arm.w = W;
+  arm.wristX = W * 0.60;                       // local x where the hand starts
 
-  arm.biteX  = W * 0.46;
-  arm.biteY  = arm.y - arm.h * 0.10;
-  arm.biteRX = W * 0.32;
-  arm.biteRY = arm.h * 0.52;
+  arm.biteX  = W * 0.30;
+  arm.biteY  = arm.y - arm.h * 0.05;
+  arm.biteRX = W * 0.23;
+  arm.biteRY = arm.h * 0.55;
 
   bgKey = '';                        // force a scene repaint at the new size
   if (state !== 'playing') draw();   // keep the frozen frame correct
@@ -616,13 +619,18 @@ function sceneLakefront(g, dusk){
   g.fillRect(W*0.31, dTop+8, 5, 26);
   g.fillRect(W*0.24, dTop+((dBot-dTop)*0.45), 6, 34);
 
-  // loon on the water
+  // loon on the water — the neck matters, or the head reads as a stray blob
   g.fillStyle='#101418';
   g.beginPath(); g.ellipse(W*0.76, horizon+H*0.10, 15, 6, 0, 0, 6.284); g.fill();
-  g.beginPath(); g.ellipse(W*0.83, horizon+H*0.075, 5.5, 6.5, 0, 0, 6.284); g.fill();
+  g.strokeStyle='#101418'; g.lineWidth=5; g.lineCap='round';
   g.beginPath();
-  g.moveTo(W*0.865, horizon+H*0.073); g.lineTo(W*0.90, horizon+H*0.079);
-  g.lineTo(W*0.865, horizon+H*0.085); g.closePath(); g.fill();
+  g.moveTo(W*0.795, horizon+H*0.097);
+  g.quadraticCurveTo(W*0.825, horizon+H*0.092, W*0.828, horizon+H*0.078);
+  g.stroke();
+  g.beginPath(); g.ellipse(W*0.83, horizon+H*0.073, 5.5, 6, 0, 0, 6.284); g.fill();
+  g.beginPath();
+  g.moveTo(W*0.855, horizon+H*0.071); g.lineTo(W*0.888, horizon+H*0.077);
+  g.lineTo(W*0.855, horizon+H*0.083); g.closePath(); g.fill();
 
   // cattails in the foreground
   cattail(g, W*0.06, H*0.99, 66);
@@ -654,10 +662,14 @@ function sceneCampground(g, dusk){
 
   // moon — crossed the sky by the second visit
   var moonX = dusk ? W*0.20 : W*0.78;
+  // soft halo: a flat disc at 13% read as a hard grey ring against the sky
+  var halo = g.createRadialGradient(moonX, H*0.11, 18, moonX, H*0.11, 52);
+  halo.addColorStop(0, 'rgba(255,250,225,.22)');
+  halo.addColorStop(1, 'rgba(255,250,225,0)');
+  g.fillStyle = halo;
+  g.beginPath(); g.arc(moonX, H*0.11, 52, 0, 6.284); g.fill();
   g.fillStyle='rgba(255,250,225,.92)';
   g.beginPath(); g.arc(moonX, H*0.11, 20, 0, 6.284); g.fill();
-  g.fillStyle='rgba(255,250,225,.13)';
-  g.beginPath(); g.arc(moonX, H*0.11, 34, 0, 6.284); g.fill();
 
   // dense pine wall
   var groundY = H*0.60;
@@ -735,16 +747,26 @@ function sceneTreehouse(g, dusk){
   }
   g.restore();
 
-  // layered leaf canopy across the top
-  var leafCols = ['#2f6b3d','#3d8049','#569a56','#25563a'];
+  /* Leaf canopy. Evenly spaced ellipses stacked into visible corrugated
+     stripes, so positions and sizes are jittered by a cheap hash instead. */
+  function hash(i){ var s = Math.sin(i * 12.9898) * 43758.5453; return s - Math.floor(s); }
+  var leafCols = ['#25563a','#2f6b3d','#3d8049','#569a56'];
   for (var layer=0; layer<4; layer++){
     g.fillStyle = leafCols[layer];
-    var yBase = H*(0.05 + layer*0.055);
-    for (var n=0; n<16; n++){
-      var lx = (n*W/15 + layer*19) % (W+50) - 25;
-      var ly = yBase + ((n*layer*13) % 26);
+    var yBase = H*(0.035 + layer*0.048);
+    for (var n=0; n<14; n++){
+      var seed = layer*31 + n;
+      var lx = -30 + (n + hash(seed)*0.9) * ((W+70)/13);
+      var ly = yBase + hash(seed+7)*H*0.045;
+      var rx = 26 + hash(seed+13)*20;
       g.beginPath();
-      g.ellipse(lx, ly, 34-layer*3, 19-layer*2, (n%2?0.5:-0.4), 0, 6.284);
+      g.ellipse(lx, ly, rx, rx*(0.48 + hash(seed+3)*0.2),
+                (hash(seed+5)-0.5)*1.5, 0, 6.284);
+      g.fill();
+      // a smaller clump tucked under each, to break the outline
+      g.beginPath();
+      g.ellipse(lx + (hash(seed+9)-0.5)*38, ly + 14 + hash(seed+11)*12,
+                rx*0.55, rx*0.32, (hash(seed+17)-0.5)*1.2, 0, 6.284);
       g.fill();
     }
   }
@@ -752,10 +774,21 @@ function sceneTreehouse(g, dusk){
   // trunk on the right
   var trunkX = W*0.78, trunkW = W*0.20;
   g.fillStyle='#6b4a2f'; g.fillRect(trunkX, 0, trunkW, H*0.90);
-  g.fillStyle='rgba(0,0,0,.20)';
-  for (var v=0; v<7; v++) g.fillRect(trunkX + 5 + v*(trunkW/7), 0, 3, H*0.90);
+  // bark: irregular grooves rather than even pinstripes
+  g.strokeStyle='rgba(0,0,0,.22)'; g.lineCap='round';
+  for (var v=0; v<9; v++){
+    var bx = trunkX + 4 + hash(v*5.5)*(trunkW-8);
+    g.lineWidth = 1.5 + hash(v*3.1)*2.5;
+    g.beginPath();
+    g.moveTo(bx, 0);
+    g.bezierCurveTo(bx + (hash(v)-0.5)*10, H*0.3,
+                    bx + (hash(v+2)-0.5)*12, H*0.6, bx + (hash(v+4)-0.5)*8, H*0.90);
+    g.stroke();
+  }
   g.fillStyle='#5a3d26';
   g.beginPath(); g.ellipse(trunkX+trunkW*0.45, H*0.30, 13, 20, 0, 0, 6.284); g.fill();
+  g.fillStyle='rgba(255,255,255,.07)';
+  g.fillRect(trunkX, 0, trunkW*0.22, H*0.90);          // light down one side
 
   // branch to the left
   g.strokeStyle='#6b4a2f'; g.lineWidth=15; g.lineCap='round';
@@ -763,6 +796,31 @@ function sceneTreehouse(g, dusk){
   g.moveTo(trunkX+4, H*0.22);
   g.quadraticCurveTo(W*0.42, H*0.17, W*0.06, H*0.27);
   g.stroke();
+
+  /* Vines hanging into the middle of the frame. Without them the play area is
+     a flat green void — these give the eye something to read depth against
+     without cluttering the space the mosquitoes fly in. */
+  var vines = [[W*0.10, H*0.26, H*0.30], [W*0.30, H*0.21, H*0.44],
+               [W*0.52, H*0.19, H*0.26], [W*0.66, H*0.16, H*0.36]];
+  for (var vi=0; vi<vines.length; vi++){
+    var vx = vines[vi][0], vy = vines[vi][1], vlen = vines[vi][2];
+    var sway = (hash(vi*7)-0.5)*26;
+    g.strokeStyle = 'rgba(58,105,58,.55)'; g.lineWidth = 2.4;
+    g.beginPath();
+    g.moveTo(vx, vy);
+    g.quadraticCurveTo(vx + sway, vy + vlen*0.55, vx + sway*0.6, vy + vlen);
+    g.stroke();
+    // leaves along the vine
+    g.fillStyle = 'rgba(70,128,66,.72)';
+    for (var lf=1; lf<=4; lf++){
+      var t = lf/5;
+      var px2 = vx + sway*(2*t*(1-t)) + sway*0.6*t*t;
+      var py2 = vy + vlen*t;
+      g.beginPath();
+      g.ellipse(px2 + ((lf%2)?9:-9), py2, 9, 4.5, (lf%2)?0.5:-0.5, 0, 6.284);
+      g.fill();
+    }
+  }
 
   // plank deck across the bottom
   var deckY = H*0.82;
@@ -1336,83 +1394,122 @@ function drawMosquito(m){
 /* Your forearm, laid across the lower third of the screen and running off both
    edges: unmistakably an arm, and it gives the bite zone a wide, flat landing
    strip that never drifts into Safari's bottom toolbar. */
-function armPath(p, halfW, th){
+/* Forearm from the left edge to a wrist, then a hand. The hand is deliberately
+   WIDER than the wrist and its fingers are drawn as separate shapes: a smooth
+   tapering shaft with a rounded tip reads as anything but an arm, and the
+   splayed silhouette is what fixes that. */
+function armPath(p, th, wristX){
+  var te = th * 1.02, tw = th * 0.82;          // half-thickness at elbow / wrist
   p.beginPath();
-  p.moveTo(-halfW, -th * 0.86);
-  p.quadraticCurveTo(-halfW * 0.30, -th * 1.06, halfW * 0.34, -th * 0.80);
-  p.quadraticCurveTo( halfW * 0.80, -th * 0.66, halfW, -th * 0.58);
-  p.lineTo(halfW, th * 0.62);
-  p.quadraticCurveTo( halfW * 0.80,  th * 0.70,  halfW * 0.34,  th * 0.84);
-  p.quadraticCurveTo(-halfW * 0.30,  th * 1.10, -halfW,  th * 0.92);
+  p.moveTo(-40, -te);
+  p.quadraticCurveTo(wristX * 0.5, -te * 1.02, wristX, -tw);
+  p.lineTo(wristX, tw);
+  p.quadraticCurveTo(wristX * 0.5, te * 1.06, -40, te);
   p.closePath();
 }
 
+function drawHand(p, th, wristX){
+  var palmW = th * 1.55, palmH = th * 1.16;    // palm flares out past the wrist
+  p.beginPath();
+  p.moveTo(wristX - 2, -th * 0.82);
+  p.quadraticCurveTo(wristX + palmW * 0.45, -palmH * 1.10, wristX + palmW, -palmH * 0.72);
+  p.quadraticCurveTo(wristX + palmW * 1.14, 0, wristX + palmW, palmH * 0.74);
+  p.quadraticCurveTo(wristX + palmW * 0.45, palmH * 1.14, wristX - 2, th * 0.86);
+  p.closePath();
+}
+
+function fingerAt(p, th, x, y, len, tilt){
+  p.beginPath();
+  p.ellipse(x + len * 0.46, y, len * 0.56, th * 0.20, tilt, 0, 6.284);
+}
+
 function drawArm(){
-  var halfW = W * 0.62, th = arm.h;
+  var th = arm.h, wristX = arm.wristX;
+  var palmW = th * 1.55, palmH = th * 1.16;
 
   ctx.save();
-  ctx.translate(arm.x, arm.y);
-  ctx.rotate(-0.055);
+  ctx.translate(0, arm.y);
+  ctx.rotate(-0.045);
 
-  // soft contact shadow underneath
-  ctx.fillStyle = 'rgba(0,0,0,.20)';
+  // contact shadow
+  ctx.fillStyle = 'rgba(0,0,0,.22)';
   ctx.beginPath();
-  ctx.ellipse(0, th * 0.75, halfW * 0.94, th * 0.42, 0, 0, 6.284);
+  ctx.ellipse(W * 0.34, th * 0.92, W * 0.46, th * 0.40, 0, 0, 6.284);
   ctx.fill();
 
-  var skin = ctx.createLinearGradient(0, -th, 0, th);
-  skin.addColorStop(0,    '#b8794f');
-  skin.addColorStop(0.30, '#eec098');
-  skin.addColorStop(0.58, '#e3ab7f');
-  skin.addColorStop(1,    '#a06844');
+  // vertical gradient does the heavy lifting: it is what makes a flat band
+  // read as a rounded limb rather than a plank
+  var skin = ctx.createLinearGradient(0, -th * 1.1, 0, th * 1.2);
+  skin.addColorStop(0,    '#b2703f');
+  skin.addColorStop(0.22, '#e8b184');
+  skin.addColorStop(0.42, '#f2c49b');
+  skin.addColorStop(0.70, '#d99e6f');
+  skin.addColorStop(1,    '#8d5732');
+
+  // fingers first, so the palm overlaps their roots
+  ctx.fillStyle = skin;
+  ctx.strokeStyle = 'rgba(112,66,38,.55)';
+  ctx.lineWidth = 1.2;
+  var fingerLens = [th * 0.95, th * 1.15, th * 1.08, th * 0.86];
+  for (var fi = 0; fi < 4; fi++){
+    var fy = -palmH * 0.58 + fi * (palmH * 0.40);
+    fingerAt(ctx, th, wristX + palmW * 0.92, fy, fingerLens[fi], 0.05 * (fi - 1.5));
+    ctx.fill();
+    ctx.stroke();                       // the gaps are what make it read as a hand
+  }
+  // thumb, tucked below the palm
+  ctx.beginPath();
+  ctx.ellipse(wristX + palmW * 0.42, palmH * 0.86, th * 0.52, th * 0.24, 0.45, 0, 6.284);
+  ctx.fill(); ctx.stroke();
 
   ctx.fillStyle = skin;
-  armPath(ctx, halfW, th);
+  armPath(ctx, th, wristX);
+  ctx.fill();
+  drawHand(ctx, th, wristX);
   ctx.fill();
 
-  // clip everything else to the arm so nothing spills into the scene
   ctx.save();
-  armPath(ctx, halfW, th);
+  armPath(ctx, th, wristX);
   ctx.clip();
 
-  // wrist crease near the right-hand end
-  ctx.strokeStyle = 'rgba(126,76,46,.32)'; ctx.lineWidth = 2.4;
+  // wrist creases
+  ctx.strokeStyle = 'rgba(126,76,46,.34)'; ctx.lineWidth = 2.2;
   ctx.beginPath();
-  ctx.moveTo(halfW * 0.62, -th);
-  ctx.quadraticCurveTo(halfW * 0.68, 0, halfW * 0.62, th);
+  ctx.moveTo(wristX - th * 0.30, -th); ctx.quadraticCurveTo(wristX - th * 0.10, 0, wristX - th * 0.30, th);
   ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(halfW * 0.71, -th);
-  ctx.quadraticCurveTo(halfW * 0.77, 0, halfW * 0.71, th);
+  ctx.moveTo(wristX - th * 0.72, -th); ctx.quadraticCurveTo(wristX - th * 0.52, 0, wristX - th * 0.72, th);
   ctx.stroke();
 
-  // veins
-  ctx.strokeStyle = 'rgba(112,84,124,.20)'; ctx.lineWidth = 3.5;
-  ctx.lineCap = 'round';
+  // a vein along the forearm
+  ctx.strokeStyle = 'rgba(110,82,124,.18)'; ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(-halfW * 0.75, -th * 0.20);
-  ctx.quadraticCurveTo(-halfW * 0.25, th * 0.22, halfW * 0.30, -th * 0.06);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(-halfW * 0.40, th * 0.55);
-  ctx.quadraticCurveTo(-halfW * 0.05, th * 0.18, halfW * 0.34, th * 0.38);
+  ctx.moveTo(-20, -th * 0.16);
+  ctx.quadraticCurveTo(W * 0.22, th * 0.24, wristX - th * 0.9, -th * 0.02);
   ctx.stroke();
 
-  // fine arm hair along the top edge
-  ctx.strokeStyle = 'rgba(92,58,34,.34)'; ctx.lineWidth = 1;
-  for (var i = 0; i < 46; i++){
-    var hx = -halfW + (i / 45) * halfW * 2;
-    var hy = -th * (0.72 + (i % 3) * 0.05);
+  // a few fine hairs, sparse enough not to look like grass
+  ctx.strokeStyle = 'rgba(96,60,34,.26)'; ctx.lineWidth = 0.9;
+  for (var i = 0; i < 16; i++){
+    var hx = -10 + (i / 15) * (wristX - 10);
+    var hy = -th * 0.80;
     ctx.beginPath();
     ctx.moveTo(hx, hy);
-    ctx.lineTo(hx + ((i % 2) ? 4 : -4), hy - 7);
+    ctx.lineTo(hx + ((i % 2) ? 3 : -3), hy - 5);
     ctx.stroke();
   }
+
+  // darker rim along the underside seals the cylindrical read
+  ctx.strokeStyle = 'rgba(90,52,28,.30)'; ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(-40, th * 0.98);
+  ctx.quadraticCurveTo(wristX * 0.45, th * 1.14, wristX, th * 1.00);
+  ctx.stroke();
 
   if (armFlash > 0){
     ctx.globalAlpha = Math.min(0.6, armFlash * 1.4);
     ctx.fillStyle = '#ff3b30';
-    ctx.fillRect(-halfW, -th * 1.2, halfW * 2, th * 2.4);
+    ctx.fillRect(-60, -th * 1.6, wristX + palmW * 3, th * 3.4);
     ctx.globalAlpha = 1;
   }
   ctx.restore();
@@ -1421,7 +1518,10 @@ function drawArm(){
 
 // ------------------------------------------------------- friendlies & webs
 function drawFirefly(f){
-  var pulse = 0.55 + 0.45 * Math.sin(f.glow);
+  /* The pulse floor matters: at the bottom of a 0.10 trough the glow was within
+     a few RGB points of the night sky, so a player could be penalised for
+     squashing something they had no way of seeing. Keep it always legible. */
+  var pulse = 0.72 + 0.28 * Math.sin(f.glow);
   var night = isDusk();
   var R = (13 + pulse * 9) * f.scale;
 
@@ -1903,7 +2003,11 @@ function showTitle(){
     '<span class="tag">Squash or be bitten</span>' +
     '<h1>Lorie\'s Mosquito<br>Squashing Game</h1>' +
     '<p class="sub">8 levels in the place you pick</p>' +
-    '<ul class="rules">' +
+    // picker first: it is the only thing the player must act on, so it should
+    // never be below the fold on a short screen
+    '<p class="sub" style="margin-bottom:8px"><b>Tap a place to start.</b> Your scene stays put — only the bugs get worse.</p>' +
+    '<div class="picker">' + picker + '</div>' +
+    '<ul class="rules" style="margin-top:14px">' +
       '<li><span>👆</span>Tap a mosquito to squash it.</li>' +
       '<li><span>🩸</span>If one lands on your arm, a ring counts down. Swat it before the ring empties or you lose a drop of blood.</li>' +
       '<li><span>❤️</span>Five drops. Lose them all and the mosquitoes win.</li>' +
@@ -1911,8 +2015,6 @@ function showTitle(){
       '<li><span>🕸️</span><b>Draw a circle around a spider</b> with your finger. It moves nearby and spins a web that catches mosquitoes for you.</li>' +
       '<li><span>🦟</span>From level 3, swarms arrive all at once.</li>' +
     '</ul>' +
-    '<p class="sub" style="margin-bottom:8px"><b>Tap a place to start.</b> Your scene stays put — only the bugs get worse.</p>' +
-    '<div class="picker">' + picker + '</div>' +
     '<div class="curve"><b>Difficulty per level L (1–8):</b><br>' +
     '<code>quota = 5 + 2(L-1) &nbsp; speed = 55 + 20(L-1) px/s<br>' +
     'onscreen = min(2 + ⌊0.8(L-1)⌋, 7)<br>' +
