@@ -2,8 +2,8 @@
 
 Lorie's Mosquito Squashing Game — a mobile web game for Safari on iPhone.
 
-Tap mosquitoes before they land on your arm and drain your blood. Eight levels
-across four outdoor places where mosquitoes actually show up.
+Tap mosquitoes before they land on your arm and drain your blood. Pick where you
+want to play, then survive eight levels of it.
 
 **Play:** https://briangroth.github.io/MosquitoGame/
 
@@ -15,23 +15,49 @@ It works equally well opened from disk or served by GitHub Pages.
 
 ## Scenes
 
-Levels cycle through four Canvas-drawn backgrounds, each played twice — once in
-daylight, once in evening light:
+You choose the scene on the title screen — from thumbnails rendered live by the
+same Canvas code that draws the real thing — and it stays put for the whole
+game. Only the bugs escalate. The light does move on: levels 1–4 play in
+daylight, 5–8 in evening light, so your chosen place still has somewhere to go.
 
-| Level | Scene |
-|-------|-------------------------|
-| 1 / 5 | Amsterdam canal |
-| 2 / 6 | Minnesota lakefront |
-| 3 / 7 | Campground |
-| 4 / 8 | Treehouse |
+- Amsterdam canal
+- Minnesota lakefront
+- Campground
+- Treehouse
 
 ## Rules
 
 - Tap a mosquito to squash it. Consecutive hits build a combo multiplier up to ×3.
 - A mosquito that reaches your forearm starts biting, shown by a countdown ring.
   Swat it before the ring empties or it takes one of your five drops of blood.
-- Clearing a level's quota moves you to the next scene and returns one drop.
+- Clearing a level's quota advances the level and returns one drop.
 - Lose all five drops and the mosquitoes win.
+
+### Friendly bugs — don't squash these
+
+**Fireflies** drift slowly and glow warm yellow-green; **spiders** scuttle along
+and pause. Squashing either costs you `20 × level` points and your combo. It
+never costs blood — that stays reserved for actual bites, so the two kinds of
+mistake stay legible.
+
+### Spiders and webs
+
+**Draw a circle around a spider with your finger.** It crawls to a nearby
+opening and spins a web there. Any mosquito that flies into a live web is stuck
+and then eaten, which counts toward your quota and scores `6 × level` — less
+than a swat, and it builds no combo, because it rewards setting the trap rather
+than reflexes. A web holds three mosquitoes, then fades and frees the spider to
+be circled again.
+
+A tap and a lasso are told apart by distance travelled: under 14px is a tap,
+anything more is a loop. Mosquitoes resolve on touch-*down* so swatting stays
+instant, while friendly bugs only resolve on touch-*up* — which is what makes it
+safe to start drawing a loop right next to a firefly.
+
+### Swarms
+
+From level 3, swarms arrive all at once from one side. A swarm deliberately
+ignores the steady-state concurrency cap — that spike is the point of it.
 
 ## Difficulty
 
@@ -44,6 +70,10 @@ speed      = 55 + 20(L-1)                  px/sec
 onscreen   = min(2 + floor(0.8(L-1)), 7)   concurrent mosquitoes
 spawn gap  = max(0.35, 1.40 - 0.14(L-1))   seconds
 bite timer = max(1.00, 2.40 - 0.18(L-1))   seconds to swat a biter
+swarm every  max(6, 15 - 1.5(L-3))         seconds, from L3
+swarm size   min(3 + floor((L-3)/2), 6)    mosquitoes
+fireflies  = min(1 + floor((L-1)/2), 4)    concurrent
+spiders    = 1, or 2 from L6               concurrent
 ```
 
 A full run is 96 mosquitoes.

@@ -80,6 +80,9 @@
   #overlay.hidden{ display:none; }
   .card{
     width:100%; max-width:340px;
+    max-height:100%; overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-y;                 /* the card may scroll; the canvas may not */
     background:var(--panel);
     border:1px solid rgba(110,231,168,.28);
     border-radius:18px;
@@ -110,6 +113,21 @@
   .btn.ghost{ background:transparent; color:var(--ink-dim); box-shadow:none;
               border:1px solid rgba(255,255,255,.18); min-height:46px; font-size:14px;
               font-weight:600; margin-top:10px; }
+  /* scene picker */
+  .picker{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:0 0 6px; }
+  .pick{
+    -webkit-appearance:none; appearance:none; cursor:pointer;
+    display:block; width:100%; padding:0; overflow:hidden;
+    border:2px solid rgba(255,255,255,.16); border-radius:14px;
+    background:#0d1c17; color:var(--ink);
+    font-family:inherit; text-align:left; touch-action:manipulation;
+    box-shadow:0 4px 14px rgba(0,0,0,.35);
+  }
+  .pick:active{ border-color:var(--accent); transform:scale(.97); }
+  .pick img{ display:block; width:100%; height:82px; object-fit:cover;
+             object-position:center 42%; }
+  .pick span{ display:block; padding:8px; font-size:11.5px; font-weight:700;
+              line-height:1.25; }
   .curve{ font-size:11px; line-height:1.5; color:var(--ink-dim); margin-top:14px;
           border-top:1px solid rgba(255,255,255,.1); padding-top:12px; text-align:left; }
   .curve code{ font-family:ui-monospace,Menlo,Consolas,monospace; color:#bfe9d4; font-size:10.5px; }
@@ -167,7 +185,8 @@ var SCENES = [
 ];
 
 /* Difficulty curve — every value below is a stated formula of the level L (1-8).
-   Shown to the player on the title card so nothing is hidden. */
+   The scene is the player's choice and never changes; this is the only thing
+   that escalates. Shown on the title card so nothing is hidden. */
 function levelConfig(L){
   var i = L - 1;
   return {
@@ -176,7 +195,13 @@ function levelConfig(L){
     concurrent: Math.min(2 + Math.floor(i * 0.8), 7),
     spawnGap:   Math.max(0.35, 1.40 - 0.14 * i),  // sec between spawns
     biteTime:   Math.max(1.00, 2.40 - 0.18 * i),  // sec to swat a biter
-    wander:     Math.max(0.60, 2.60 - 0.25 * i)   // sec of free flight before it dives
+    wander:     Math.max(0.60, 2.60 - 0.25 * i),  // sec of free flight before it dives
+    // swarms arrive from level 3, more often and larger as you go
+    swarmEvery: L < 3 ? 0 : Math.max(6.0, 15.0 - 1.5 * (L - 3)),
+    swarmSize:  Math.min(3 + Math.floor((L - 3) / 2), 6),
+    // friendly bugs share the screen and must NOT be squashed
+    fireflies:  Math.min(1 + Math.floor(i / 2), 4),
+    spiders:    L >= 6 ? 2 : 1
   };
 }
 
@@ -199,11 +224,18 @@ var bgKey = '';
 
 var state = 'title';   // title | playing | levelclear | gameover | win | paused
 var level = 1, score = 0, health = MAX_HEALTH;
+var sceneIdx = 0;      // chosen once on the title screen, fixed for the whole game
 var squashed = 0, combo = 0, bestCombo = 0, totalSquashed = 0, bitesTaken = 0;
+var friendliesHurt = 0, webKills = 0, websSpun = 0;
 var cfg = levelConfig(1);
-var mosquitoes = [], fx = [];
-var spawnTimer = 0, armFlash = 0, shake = 0, sceneFade = 0;
+var mosquitoes = [], friendlies = [], webs = [], fx = [];
+var spawnTimer = 0, swarmTimer = 0, friendlyTimer = 0;
+var armFlash = 0, shake = 0, sceneFade = 0, swarmBanner = 0, pendingClear = false;
 var lastT = 0, rafId = 0;
+
+/* One finger does two jobs: a tap squashes, a drawn loop lassos a spider.
+   They are told apart by how far the finger travelled. */
+var gesture = { active:false, moved:0, pts:[], consumed:false };
 
 /* The forearm rests across the lower play area: the thing being bitten.
    Its bite zone is deliberately held well clear of the bottom edge, because
@@ -258,17 +290,21 @@ setTimeout(resize, 0);
 setTimeout(resize, 250);
 
 // ================================================================= SCENES
+/* The player picks the place; the light is what moves on. Levels 1-4 play in
+   daylight, 5-8 in evening light, so the chosen scene still has somewhere to go
+   visually without ever becoming a different place. */
+function isDusk(){ return level > 4; }
+
 function paintScene(){
-  var key = level + 'x' + W + 'x' + H;
+  var idx  = sceneIdx;
+  var dusk = isDusk();
+  var key = idx + (dusk ? 'd' : 'l') + 'x' + W + 'x' + H;
   if (key === bgKey) return;
   bgKey = key;
 
   var g = bgCtx;
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, W, H);
-
-  var idx  = (level - 1) % SCENES.length;
-  var dusk = level > SCENES.length;           // second pass through = evening
 
   if      (idx === 0) sceneAmsterdam(g, dusk);
   else if (idx === 1) sceneLakefront(g, dusk);
@@ -757,13 +793,16 @@ function sceneTreehouse(g, dusk){
 }
 
 // ================================================================= ENTITIES
-function spawnMosquito(){
+function clamp(v, lo, hi){ return v < lo ? lo : (v > hi ? hi : v); }
+
+function spawnMosquito(at){
   // enter from a random edge, biased to the top half where there is room to fly
   var side = Math.random();
   var x, y;
-  if (side < 0.45)      { x = Math.random()*W;  y = -26; }
-  else if (side < 0.72) { x = -26;              y = Math.random()*H*0.6; }
-  else                  { x = W + 26;           y = Math.random()*H*0.6; }
+  if (at)                    { x = at.x;           y = at.y; }
+  else if (side < 0.45)      { x = Math.random()*W; y = -26; }
+  else if (side < 0.72)      { x = -26;             y = Math.random()*H*0.6; }
+  else                       { x = W + 26;          y = Math.random()*H*0.6; }
 
   var ang = Math.random() * Math.PI * 2;
   mosquitoes.push({
@@ -777,16 +816,212 @@ function spawnMosquito(){
     biteT: 0,
     dead: false,
     scale: 0,                     // pops in so it is never a surprise pixel
-    wing: Math.random() * 6.283
+    wing: Math.random() * 6.283,
+    web: null, stuckT: 0
   });
+}
+
+function aliveMosquitoes(){
+  var n = 0;
+  for (var i = 0; i < mosquitoes.length; i++) if (mosquitoes[i].mode !== 'flee') n++;
+  return n;
+}
+
+/* A swarm is a burst that deliberately ignores the steady-state concurrency
+   cap — that spike is the whole point of it. */
+function spawnSwarm(){
+  // bounded by what is left of the quota, but deliberately NOT by how many are
+  // already in the air — overshooting the concurrency cap is what makes it a swarm
+  var n = Math.min(cfg.swarmSize, cfg.quota - squashed);
+  if (n < 2) return false;
+
+  var fromLeft = Math.random() < 0.5;
+  var ox = fromLeft ? -34 : W + 34;
+  var oy = 70 + Math.random() * H * 0.35;
+  for (var i = 0; i < n; i++){
+    spawnMosquito({ x: ox + (Math.random() - 0.5) * 60,
+                    y: oy + (Math.random() - 0.5) * 90 });
+  }
+  swarmBanner = 1.4;
+  return true;
+}
+
+// ---------------------------------------------------------- friendly bugs
+function spawnFriendly(kind){
+  var f = {
+    kind: kind,
+    x: 30 + Math.random() * (W - 60),
+    y: 60 + Math.random() * (arm.y - 140),
+    vx: 0, vy: 0,
+    phase: Math.random() * 6.283,
+    scale: 0,
+    mode: 'idle'
+  };
+  if (kind === 'firefly'){
+    var a = Math.random() * 6.283;
+    f.vx = Math.cos(a) * 26;
+    f.vy = Math.sin(a) * 26;
+    f.glow = Math.random() * 6.283;
+  } else {                       // spider
+    f.legPhase = Math.random() * 6.283;
+    f.tx = f.x; f.ty = f.y;
+    f.weaveT = 0;
+    f.pickTimer = 0;
+    f.face = 1;
+  }
+  friendlies.push(f);
+  return f;
+}
+
+function countKind(kind){
+  var n = 0;
+  for (var i = 0; i < friendlies.length; i++) if (friendlies[i].kind === kind) n++;
+  return n;
+}
+
+function updateFriendlies(dt){
+  for (var i = friendlies.length - 1; i >= 0; i--){
+    var f = friendlies[i];
+    f.scale = Math.min(1, f.scale + dt * 3);
+    f.phase += dt * 1.7;
+
+    if (f.kind === 'firefly'){
+      f.glow += dt * 2.4;
+      f.vx += Math.cos(f.phase * 0.9) * 22 * dt;
+      f.vy += Math.sin(f.phase * 1.27) * 22 * dt;
+      var sp = Math.hypot(f.vx, f.vy) || 1;
+      f.vx = f.vx / sp * 30; f.vy = f.vy / sp * 30;
+      f.x += f.vx * dt; f.y += f.vy * dt;
+      var pad = 26;
+      if (f.x < pad)            { f.x = pad;            f.vx =  Math.abs(f.vx); }
+      if (f.x > W - pad)        { f.x = W - pad;        f.vx = -Math.abs(f.vx); }
+      if (f.y < pad)            { f.y = pad;            f.vy =  Math.abs(f.vy); }
+      if (f.y > arm.y - 70)     { f.y = arm.y - 70;     f.vy = -Math.abs(f.vy); }
+
+    } else {                     // spider
+      f.legPhase += dt * (f.mode === 'idle' ? 3.2 : 7.5);
+
+      if (f.mode === 'idle'){
+        // amble slowly to a new perch every few seconds
+        f.pickTimer -= dt;
+        if (f.pickTimer <= 0){
+          f.tx = clamp(f.x + (Math.random() - 0.5) * 150, 34, W - 34);
+          f.ty = clamp(f.y + (Math.random() - 0.5) * 120, 60, arm.y - 90);
+          f.pickTimer = 2.5 + Math.random() * 2.5;
+        }
+        f.face = (f.tx < f.x) ? -1 : 1;
+        stepToward(f, 26, dt);
+
+      } else if (f.mode === 'moving'){
+        f.face = (f.tx < f.x) ? -1 : 1;
+        if (stepToward(f, 165, dt)){
+          f.mode = 'weaving';
+          f.weaveT = 0;
+          websSpun++;
+          webs.push({ x:f.x, y:f.y, r:0, targetR: 52 + Math.random() * 12,
+                      caught:0, cap:3, age:0, life:18, build:0, spider:f, fade:1 });
+        }
+
+      } else if (f.mode === 'weaving'){
+        f.weaveT += dt;
+        if (f.weaveT >= 0.9) f.mode = 'guard';   // web finished, spider sits on it
+
+      } else if (f.mode === 'guard'){
+        // held in place by its web; released when the web goes
+        var w = webOf(f);
+        if (!w){ f.mode = 'idle'; f.pickTimer = 0; }
+      }
+    }
+  }
+}
+
+function stepToward(f, speed, dt){
+  var dx = f.tx - f.x, dy = f.ty - f.y;
+  var d = Math.hypot(dx, dy);
+  if (d < 3) return true;
+  var step = Math.min(d, speed * dt);
+  f.x += dx / d * step;
+  f.y += dy / d * step;
+  return (d - step) < 3;
+}
+
+function webOf(spider){
+  for (var i = 0; i < webs.length; i++) if (webs[i].spider === spider) return webs[i];
+  return null;
+}
+
+/* Called when the player draws a loop around a spider. It crawls to a nearby
+   opening and spins a web there. */
+function sendSpiderToWeave(f){
+  var ang  = Math.random() * 6.283;
+  var dist = 75 + Math.random() * 70;
+  // nudge the destination toward mid-screen, where the mosquitoes actually fly
+  var cx = W * 0.5, cy = arm.y * 0.55;
+  f.tx = clamp(f.x + Math.cos(ang) * dist + (cx - f.x) * 0.25, 46, W - 46);
+  f.ty = clamp(f.y + Math.sin(ang) * dist + (cy - f.y) * 0.25, 70, arm.y - 95);
+  f.mode = 'moving';
+  fx.push({ kind:'text', x:f.x, y:f.y - 26, t:0, life:1.0, s:'Weave!' });
+  for (var i = 0; i < 10; i++){
+    var a = Math.random() * 6.283, s = 40 + Math.random() * 90;
+    fx.push({ kind:'dot', x:f.x, y:f.y, vx:Math.cos(a)*s, vy:Math.sin(a)*s,
+              t:0, life:0.5, col:'#e8f4ff', r:1.4 + Math.random()*1.8 });
+  }
+}
+
+function updateWebs(dt){
+  for (var i = webs.length - 1; i >= 0; i--){
+    var w = webs[i];
+    if (w.build < 1){
+      w.build = Math.min(1, w.build + dt / 0.9);
+      w.r = w.targetR * w.build;
+      continue;
+    }
+    w.age += dt;
+    if (w.caught >= w.cap || w.age > w.life){
+      w.fade -= dt * 1.3;
+      if (w.fade <= 0){
+        if (w.spider && w.spider.mode === 'guard'){
+          w.spider.mode = 'idle';
+          w.spider.pickTimer = 0;
+        }
+        webs.splice(i, 1);
+      }
+    }
+  }
 }
 
 function updateMosquitoes(dt){
   for (var i = mosquitoes.length - 1; i >= 0; i--){
+    /* A bite can drop the last drop of blood, and endGame() empties this very
+       list underneath us. Bail out rather than walking off the end of it. */
+    if (state !== 'playing') return;
     var m = mosquitoes[i];
     m.scale = Math.min(1, m.scale + dt * 4);
     m.wing += dt * 34;
     m.phase += dt * m.wobble * 3.4;
+
+    // a live web snags anything that flies into it
+    if (m.mode === 'fly' || m.mode === 'dive'){
+      var caught = webAt(m.x, m.y);
+      if (caught){
+        m.mode = 'stuck';
+        m.web = caught;
+        m.stuckT = 1.1;
+        burst(m.x, m.y, '#eaf4ff', 7);
+      }
+    }
+
+    if (m.mode === 'stuck'){
+      m.stuckT -= dt;
+      // struggle in place until the spider gets to it
+      m.x += Math.cos(m.phase * 5) * 14 * dt;
+      m.y += Math.sin(m.phase * 6) * 12 * dt;
+      if (m.stuckT <= 0){
+        webKill(m);
+        mosquitoes.splice(i, 1);
+      }
+      continue;
+    }
 
     if (m.mode === 'fly'){
       // wandering drift + sine wobble, the classic insect flight read
@@ -851,27 +1086,115 @@ function takeBite(m){
   if (health <= 0) endGame(false);
 }
 
+/* Single place where a mosquito stops counting, whether the player swatted it
+   or a web did. Level completion is deferred to the end of the frame so this
+   can safely be called from inside the update loop. */
+function creditKill(points, x, y, label){
+  squashed++;
+  totalSquashed++;
+  score = Math.max(0, score + points);
+  elScore.textContent = score;
+  fx.push({ kind:'text', x:x, y:y - 16, t:0, life:0.75, s:label });
+  updateProgress();
+  if (squashed >= cfg.quota) pendingClear = true;
+}
+
 function squash(m){
   m.dead = true;
   combo++;
   if (combo > bestCombo) bestCombo = combo;
-  squashed++;
-  totalSquashed++;
 
   var mult  = Math.min(1 + (combo - 1) * 0.1, 3);      // combo caps at x3
   var bonus = (m.mode === 'bite') ? 1.5 : 1;           // swatting a biter pays more
   var gained = Math.round(10 * level * mult * bonus);
-  score += gained;
 
   burst(m.x, m.y, '#d8465c', 16);
   fx.push({ kind:'ring', x:m.x, y:m.y, t:0, life:0.34 });
-  fx.push({ kind:'text', x:m.x, y:m.y - 16, t:0, life:0.75,
-            s:'+' + gained + (combo > 2 ? '  x' + mult.toFixed(1) : '') });
   shake = Math.max(shake, 4);
 
+  creditKill(gained, m.x, m.y,
+             '+' + gained + (combo > 2 ? '  x' + mult.toFixed(1) : ''));
+}
+
+// A web catch is worth less than a swat, and builds no combo — it is a reward
+// for setting the trap, not for reflexes.
+function webKill(m){
+  var w = m.web;
+  if (w) w.caught++;
+  webKills++;
+  var gained = Math.round(6 * level);
+  burst(m.x, m.y, '#cfe4f2', 12);
+  creditKill(gained, m.x, m.y, '+' + gained + '  web');
+}
+
+/* Squashing a firefly or a spider. Costs points and the combo, never health —
+   health is reserved for actual bites so the two failures stay distinct. */
+function hurtFriendly(idx){
+  var f = friendlies[idx];
+  friendlies.splice(idx, 1);
+  friendliesHurt++;
+  combo = 0;
+
+  var penalty = 20 * level;
+  score = Math.max(0, score - penalty);
   elScore.textContent = score;
-  updateProgress();
-  if (squashed >= cfg.quota) levelClear();
+
+  burst(f.x, f.y, f.kind === 'firefly' ? '#ffe27a' : '#8b7355', 14);
+  fx.push({ kind:'text', x:f.x, y:f.y - 18, t:0, life:1.1,
+            s:'-' + penalty + '  friend!' });
+  shake = Math.max(shake, 7);
+
+  // a squashed spider takes its web with it
+  if (f.kind === 'spider'){
+    var w = webOf(f);
+    if (w) w.caught = w.cap;
+  }
+}
+
+function webAt(x, y){
+  for (var i = 0; i < webs.length; i++){
+    var w = webs[i];
+    if (w.build < 1 || w.caught >= w.cap || w.fade < 1) continue;
+    if (Math.hypot(w.x - x, w.y - y) < w.r * 0.88) return w;
+  }
+  return null;
+}
+
+// ------------------------------------------------------------- lasso maths
+function polyArea(pts){
+  var a = 0;
+  for (var i = 0, j = pts.length - 1; i < pts.length; j = i++){
+    a += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1]);
+  }
+  return Math.abs(a / 2);
+}
+
+function pointInPoly(px, py, pts){
+  var inside = false;
+  for (var i = 0, j = pts.length - 1; i < pts.length; j = i++){
+    var xi = pts[i][0], yi = pts[i][1], xj = pts[j][0], yj = pts[j][1];
+    if (((yi > py) !== (yj > py)) &&
+        (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
+/* A finger-drawn loop counts if it encloses a real area and comes back near
+   where it started. Deliberately forgiving — nobody draws a neat circle on a
+   phone while mosquitoes are biting. */
+function tryLasso(pts){
+  if (pts.length < 6) return false;
+  if (polyArea(pts) < 1800) return false;
+  var gap = Math.hypot(pts[0][0] - pts[pts.length-1][0],
+                       pts[0][1] - pts[pts.length-1][1]);
+  if (gap > 120) return false;
+
+  for (var i = 0; i < friendlies.length; i++){
+    var f = friendlies[i];
+    if (f.kind !== 'spider' || f.mode !== 'idle') continue;
+    if (pointInPoly(f.x, f.y, pts)){ sendSpiderToWeave(f); return true; }
+  }
+  return false;
 }
 
 function burst(x, y, col, n){
@@ -1096,6 +1419,175 @@ function drawArm(){
   ctx.restore();
 }
 
+// ------------------------------------------------------- friendlies & webs
+function drawFirefly(f){
+  var pulse = 0.55 + 0.45 * Math.sin(f.glow);
+  var night = isDusk();
+  var R = (13 + pulse * 9) * f.scale;
+
+  ctx.save();
+  ctx.translate(f.x, f.y);
+
+  // the glow is the whole point — big, soft and warm, nothing like a mosquito
+  var gl = ctx.createRadialGradient(0, 0, 1, 0, 0, R * 2.4);
+  gl.addColorStop(0,    'rgba(255,247,170,' + (0.85 * pulse) + ')');
+  gl.addColorStop(0.28, 'rgba(214,255,120,' + (0.42 * pulse) + ')');
+  gl.addColorStop(0.65, 'rgba(150,255,90,'  + (0.16 * pulse * (night ? 1.4 : 1)) + ')');
+  gl.addColorStop(1,    'rgba(120,255,80,0)');
+  ctx.fillStyle = gl;
+  ctx.beginPath(); ctx.arc(0, 0, R * 2.4, 0, 6.284); ctx.fill();
+
+  // little beetle body under the lantern
+  ctx.scale(f.scale, f.scale);
+  ctx.fillStyle = '#4a3b22';
+  ctx.beginPath(); ctx.ellipse(0, 0, 6.5, 4, 0.2, 0, 6.284); ctx.fill();
+  ctx.fillStyle = '#2c2416';
+  ctx.beginPath(); ctx.arc(-6, -0.8, 2.8, 0, 6.284); ctx.fill();
+  ctx.fillStyle = 'rgba(255,250,190,' + (0.55 + 0.45 * pulse) + ')';
+  ctx.beginPath(); ctx.ellipse(4.4, 0.6, 4.2, 2.8, 0.2, 0, 6.284); ctx.fill();
+
+  // wings
+  ctx.strokeStyle = 'rgba(255,255,255,.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(1, -3.4, 6, 2.2, -0.35, 0, 6.284);
+  ctx.ellipse(1,  3.4, 6, 2.2,  0.35, 0, 6.284);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSpider(f){
+  var s = f.scale;
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  ctx.scale(s * f.face, s);
+
+  // shadow
+  var sh = ctx.createRadialGradient(0, 4, 2, 0, 4, 22);
+  sh.addColorStop(0, 'rgba(0,0,0,.32)');
+  sh.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sh;
+  ctx.beginPath(); ctx.arc(0, 4, 22, 0, 6.284); ctx.fill();
+
+  // eight legs, scuttling
+  ctx.strokeStyle = '#241c16';
+  ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (var side = -1; side <= 1; side += 2){
+    for (var l = 0; l < 4; l++){
+      var swing = Math.sin(f.legPhase + l * 1.2 + (side > 0 ? 0 : Math.PI)) * 3.2;
+      var bx = -5 + l * 3.4;
+      var kx = bx + (l - 1.5) * 7 + swing;
+      var ky = side * 10;
+      ctx.beginPath();
+      ctx.moveTo(bx, side * 2);
+      ctx.quadraticCurveTo(kx, ky * 0.55, kx + (l - 1.5) * 4, ky + side * 5);
+      ctx.stroke();
+    }
+  }
+
+  // abdomen + head
+  ctx.fillStyle = '#33281f';
+  ctx.beginPath(); ctx.ellipse(6, 0, 9, 7.5, 0, 0, 6.284); ctx.fill();
+  ctx.fillStyle = 'rgba(226,196,120,.55)';         // marking
+  ctx.beginPath(); ctx.ellipse(7, 0, 4, 3, 0, 0, 6.284); ctx.fill();
+  ctx.fillStyle = '#241c16';
+  ctx.beginPath(); ctx.ellipse(-4, 0, 5.5, 4.6, 0, 0, 6.284); ctx.fill();
+  ctx.fillStyle = '#e9e2d2';
+  ctx.beginPath(); ctx.arc(-7, -1.6, 1.3, 0, 6.284); ctx.fill();
+  ctx.beginPath(); ctx.arc(-7,  1.4, 1.3, 0, 6.284); ctx.fill();
+  ctx.restore();
+
+  // a spider you can still lasso advertises it
+  if (f.mode === 'idle'){
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    ctx.setLineDash([5, 6]);
+    ctx.lineDashOffset = -f.phase * 9;
+    ctx.strokeStyle = 'rgba(160,235,255,.42)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(0, 0, 30, 0, 6.284); ctx.stroke();
+    ctx.restore();
+    ctx.setLineDash([]);
+  }
+}
+
+function drawWeb(w){
+  var R = w.r;
+  if (R < 2) return;
+  ctx.save();
+  ctx.translate(w.x, w.y);
+  ctx.globalAlpha = Math.max(0, w.fade) * (0.55 + 0.45 * w.build);
+  ctx.strokeStyle = 'rgba(232,244,255,.85)';
+  ctx.lineWidth = 1.1;
+
+  var spokes = 10;
+  for (var i = 0; i < spokes; i++){
+    var a = (i / spokes) * 6.283;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(a) * R, Math.sin(a) * R);
+    ctx.stroke();
+  }
+  // spiral rings, drawn as chords between spokes so they sag like real silk
+  for (var ring = 1; ring <= 4; ring++){
+    var rr = R * (ring / 4.2);
+    ctx.beginPath();
+    for (var j = 0; j <= spokes; j++){
+      var a2 = (j / spokes) * 6.283;
+      var px = Math.cos(a2) * rr, py = Math.sin(a2) * rr;
+      if (j === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = Math.max(0, w.fade) * 0.16;
+  ctx.fillStyle = '#dff0ff';
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, 6.284); ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+function drawTrail(){
+  var pts = gesture.pts;
+  if (!gesture.active || pts.length < 2 || gesture.moved < 14) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(150,240,255,.9)';
+  ctx.lineWidth = 3.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.shadowColor = 'rgba(120,220,255,.9)';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (var i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.stroke();
+  // hint the closing line back to the start
+  ctx.setLineDash([4, 7]);
+  ctx.lineWidth = 1.6;
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(150,240,255,.45)';
+  ctx.beginPath();
+  ctx.moveTo(pts[pts.length-1][0], pts[pts.length-1][1]);
+  ctx.lineTo(pts[0][0], pts[0][1]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawSwarmBanner(){
+  if (swarmBanner <= 0) return;
+  var k = Math.min(1, swarmBanner / 0.35);
+  ctx.save();
+  ctx.globalAlpha = k;
+  ctx.textAlign = 'center';
+  ctx.font = '800 27px -apple-system,BlinkMacSystemFont,Helvetica,sans-serif';
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = 'rgba(0,0,0,.55)';
+  ctx.fillStyle = '#ffd166';
+  var y = H * 0.24 - (1 - k) * 16;
+  ctx.strokeText('SWARM!', W / 2, y);
+  ctx.fillText('SWARM!', W / 2, y);
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
 function drawFx(){
   for (var i = 0; i < fx.length; i++){
     var f = fx[i], k = 1 - f.t / f.life;
@@ -1141,8 +1633,15 @@ function draw(){
   ctx.restore();
 
   drawArm();
+  for (var wi = 0; wi < webs.length; wi++) drawWeb(webs[wi]);
+  for (var fi = 0; fi < friendlies.length; fi++){
+    var f = friendlies[fi];
+    if (f.kind === 'firefly') drawFirefly(f); else drawSpider(f);
+  }
   for (var i = 0; i < mosquitoes.length; i++) drawMosquito(mosquitoes[i]);
+  drawTrail();
   drawFx();
+  drawSwarmBanner();
 
   if (sceneFade > 0){
     ctx.globalAlpha = Math.min(1, sceneFade);
@@ -1162,33 +1661,56 @@ function frame(t){
   lastT = t;
 
   if (state === 'playing'){
+    // steady trickle
     spawnTimer -= dt;
-    var remaining = cfg.quota - squashed;
-    var slots = Math.min(cfg.concurrent, remaining);
-    var alive = 0;
-    for (var i = 0; i < mosquitoes.length; i++) if (mosquitoes[i].mode !== 'flee') alive++;
-    if (spawnTimer <= 0 && alive < slots){
+    var slots = Math.min(cfg.concurrent, cfg.quota - squashed);
+    if (spawnTimer <= 0 && aliveMosquitoes() < slots){
       spawnMosquito();
       spawnTimer = cfg.spawnGap;
     }
+
+    // swarms, from level 3
+    if (cfg.swarmEvery > 0){
+      swarmTimer -= dt;
+      if (swarmTimer <= 0){
+        spawnSwarm();
+        swarmTimer = cfg.swarmEvery;
+      }
+    }
+
+    // keep the friendly population topped up
+    friendlyTimer -= dt;
+    if (friendlyTimer <= 0){
+      friendlyTimer = 1.1;
+      if (countKind('firefly') < cfg.fireflies) spawnFriendly('firefly');
+      else if (countKind('spider') < cfg.spiders) spawnFriendly('spider');
+    }
+
     updateMosquitoes(dt);
+    updateFriendlies(dt);
+    updateWebs(dt);
+
+    // deferred so it can be triggered from inside the update loop
+    if (pendingClear){ pendingClear = false; levelClear(); }
   }
 
   updateFx(dt);
-  if (armFlash > 0)  armFlash  = Math.max(0, armFlash - dt * 1.6);
-  if (shake > 0)     shake     = Math.max(0, shake - dt * 34);
-  if (sceneFade > 0) sceneFade = Math.max(0, sceneFade - dt * 1.5);
+  if (armFlash > 0)    armFlash    = Math.max(0, armFlash - dt * 1.6);
+  if (shake > 0)       shake       = Math.max(0, shake - dt * 34);
+  if (sceneFade > 0)   sceneFade   = Math.max(0, sceneFade - dt * 1.5);
+  if (swarmBanner > 0) swarmBanner = Math.max(0, swarmBanner - dt);
 
   draw();
 }
 
 // ================================================================= INPUT
-function tapAt(cx, cy){
-  if (state !== 'playing') return;
+function toLocal(cx, cy){
   var r = canvas.getBoundingClientRect();
-  var x = cx - r.left, y = cy - r.top;
+  return [cx - r.left, cy - r.top];
+}
 
-  // pick the CLOSEST mosquito inside the forgiving radius, not the first match
+// pick the CLOSEST candidate inside the forgiving radius, not the first match
+function pickMosquito(x, y){
   var best = null, bestD = HIT_RADIUS * HIT_RADIUS;
   for (var i = 0; i < mosquitoes.length; i++){
     var m = mosquitoes[i];
@@ -1197,33 +1719,102 @@ function tapAt(cx, cy){
     var d2 = dx * dx + dy * dy;
     if (d2 <= bestD){ bestD = d2; best = i; }
   }
+  return best;
+}
 
-  if (best !== null){
-    var hit = mosquitoes[best];
-    mosquitoes.splice(best, 1);
-    squash(hit);
-  } else {
-    combo = 0;                                   // a miss only costs the combo
-    fx.push({ kind:'ring', x:x, y:y, t:0, life:0.22 });
+function pickFriendly(x, y){
+  var best = null, bestD = HIT_RADIUS * HIT_RADIUS;
+  for (var i = 0; i < friendlies.length; i++){
+    var f = friendlies[i];
+    var dx = f.x - x, dy = f.y - y;
+    var d2 = dx * dx + dy * dy;
+    if (d2 <= bestD){ bestD = d2; best = i; }
   }
+  return best;
+}
+
+/* Mosquitoes are resolved on touch-DOWN so swatting stays instant. Everything
+   else waits for touch-UP, which is what makes it safe to start drawing a
+   lasso next to a firefly without splatting it. */
+function pointerDown(cx, cy){
+  if (state !== 'playing') return;
+  var p = toLocal(cx, cy);
+  gesture.active = true;
+  gesture.moved = 0;
+  gesture.pts = [p];
+  gesture.consumed = false;
+
+  var m = pickMosquito(p[0], p[1]);
+  if (m !== null){
+    var hit = mosquitoes[m];
+    mosquitoes.splice(m, 1);
+    squash(hit);
+    gesture.consumed = true;
+  }
+}
+
+function pointerMove(cx, cy){
+  if (!gesture.active) return;
+  var p = toLocal(cx, cy);
+  var last = gesture.pts[gesture.pts.length - 1];
+  var d = Math.hypot(p[0] - last[0], p[1] - last[1]);
+  if (d < 4) return;
+  gesture.moved += d;
+  gesture.pts.push(p);
+  if (gesture.pts.length > 260) gesture.pts.shift();
+}
+
+function pointerUp(){
+  if (!gesture.active) return;
+  gesture.active = false;
+  var pts = gesture.pts;
+  var end = pts[pts.length - 1] || [0, 0];
+
+  if (gesture.moved < 14){
+    // a tap
+    if (!gesture.consumed){
+      var f = pickFriendly(end[0], end[1]);
+      if (f !== null) hurtFriendly(f);
+      else {
+        combo = 0;                             // a miss only costs the combo
+        fx.push({ kind:'ring', x:end[0], y:end[1], t:0, life:0.22 });
+      }
+    }
+  } else {
+    tryLasso(pts);
+  }
+  gesture.pts = [];
 }
 
 if (window.PointerEvent){
   canvas.addEventListener('pointerdown', function(e){
     e.preventDefault();
-    tapAt(e.clientX, e.clientY);
+    if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
+    pointerDown(e.clientX, e.clientY);
   }, { passive:false });
+  canvas.addEventListener('pointermove', function(e){
+    if (!gesture.active) return;
+    e.preventDefault();
+    pointerMove(e.clientX, e.clientY);
+  }, { passive:false });
+  canvas.addEventListener('pointerup',     function(e){ e.preventDefault(); pointerUp(); }, { passive:false });
+  canvas.addEventListener('pointercancel', function(){ pointerUp(); }, { passive:false });
 } else {
   canvas.addEventListener('touchstart', function(e){
     e.preventDefault();
-    for (var i = 0; i < e.changedTouches.length; i++){
-      tapAt(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
-    }
+    var t = e.changedTouches[0];
+    if (t) pointerDown(t.clientX, t.clientY);
   }, { passive:false });
-  canvas.addEventListener('mousedown', function(e){
+  canvas.addEventListener('touchmove', function(e){
     e.preventDefault();
-    tapAt(e.clientX, e.clientY);
+    var t = e.changedTouches[0];
+    if (t) pointerMove(t.clientX, t.clientY);
   }, { passive:false });
+  canvas.addEventListener('touchend',    function(e){ e.preventDefault(); pointerUp(); }, { passive:false });
+  canvas.addEventListener('touchcancel', function(){ pointerUp(); }, { passive:false });
+  canvas.addEventListener('mousedown', function(e){ e.preventDefault(); pointerDown(e.clientX, e.clientY); }, { passive:false });
+  canvas.addEventListener('mousemove', function(e){ if (gesture.active) pointerMove(e.clientX, e.clientY); }, { passive:false });
+  canvas.addEventListener('mouseup',   function(e){ e.preventDefault(); pointerUp(); }, { passive:false });
 }
 
 // kill Safari's pinch-zoom and double-tap-zoom over the whole page
@@ -1255,8 +1846,7 @@ function updateProgress(){
 function renderHud(){
   elLvl.textContent = level;
   elScore.textContent = score;
-  var s = SCENES[(level - 1) % SCENES.length];
-  elScene.textContent = s.name + (level > SCENES.length ? ' — Dusk' : '');
+  elScene.textContent = SCENES[sceneIdx].name + (isDusk() ? ' — Evening' : '');
   renderHealth();
   updateProgress();
 }
@@ -1268,43 +1858,92 @@ function showOverlay(html){
 }
 function hideOverlay(){ overlay.classList.add('hidden'); }
 
+/* Paint a scene into an offscreen canvas for the picker. The scene painters
+   read the module-level W/H, so they are borrowed and restored around the call. */
+var thumbCache = {};
+function sceneThumb(idx){
+  if (thumbCache[idx]) return thumbCache[idx];
+  var tw = 168, th = 268;
+  var c = document.createElement('canvas');
+  c.width = tw; c.height = th;
+  var g = c.getContext('2d');
+  var sw = W, sh = H;
+  W = tw; H = th;
+  try {
+    if      (idx === 0) sceneAmsterdam(g, false);
+    else if (idx === 1) sceneLakefront(g, false);
+    else if (idx === 2) sceneCampground(g, false);
+    else                sceneTreehouse(g, false);
+  } finally {
+    W = sw; H = sh;
+  }
+  thumbCache[idx] = c.toDataURL('image/png');
+  return thumbCache[idx];
+}
+
 function showTitle(){
   state = 'title';
   level = 1; score = 0; health = MAX_HEALTH;
   squashed = 0; combo = 0; bestCombo = 0; totalSquashed = 0; bitesTaken = 0;
+  friendliesHurt = 0; webKills = 0; websSpun = 0;
   cfg = levelConfig(1);
-  mosquitoes = []; fx = [];
+  mosquitoes = []; friendlies = []; webs = []; fx = [];
   renderHud();
   paintScene();
+
+  var picker = '';
+  for (var i = 0; i < SCENES.length; i++){
+    picker += '<button class="pick" data-scene="' + i + '">' +
+                '<img src="' + sceneThumb(i) + '" alt="">' +
+                '<span>' + SCENES[i].name + '</span>' +
+              '</button>';
+  }
+
   showOverlay(
     '<span class="tag">Squash or be bitten</span>' +
     '<h1>Lorie\'s Mosquito<br>Squashing Game</h1>' +
-    '<p class="sub">8 levels &middot; 4 buggy places</p>' +
+    '<p class="sub">8 levels in the place you pick</p>' +
     '<ul class="rules">' +
       '<li><span>👆</span>Tap a mosquito to squash it.</li>' +
       '<li><span>🩸</span>If one lands on your arm, a ring counts down. Swat it before the ring empties or you lose a drop of blood.</li>' +
       '<li><span>❤️</span>Five drops. Lose them all and the mosquitoes win.</li>' +
-      '<li><span>🌍</span>Clear a level’s quota to move to the next place.</li>' +
+      '<li><span>✨</span><b>Don’t squash the friendly bugs.</b> Fireflies glow; spiders scuttle. Hitting one costs you points.</li>' +
+      '<li><span>🕸️</span><b>Draw a circle around a spider</b> with your finger. It moves nearby and spins a web that catches mosquitoes for you.</li>' +
+      '<li><span>🦟</span>From level 3, swarms arrive all at once.</li>' +
     '</ul>' +
-    '<button class="btn" id="btnStart">Start Swatting</button>' +
+    '<p class="sub" style="margin-bottom:8px"><b>Tap a place to start.</b> Your scene stays put — only the bugs get worse.</p>' +
+    '<div class="picker">' + picker + '</div>' +
     '<div class="curve"><b>Difficulty per level L (1–8):</b><br>' +
     '<code>quota = 5 + 2(L-1) &nbsp; speed = 55 + 20(L-1) px/s<br>' +
     'onscreen = min(2 + ⌊0.8(L-1)⌋, 7)<br>' +
     'spawn gap = max(0.35, 1.40 - 0.14(L-1)) s<br>' +
-    'bite timer = max(1.00, 2.40 - 0.18(L-1)) s</code></div>'
+    'bite timer = max(1.00, 2.40 - 0.18(L-1)) s<br>' +
+    'swarm every max(6, 15 - 1.5(L-3)) s, size min(3 + ⌊(L-3)/2⌋, 6)<br>' +
+    'fireflies = min(1 + ⌊(L-1)/2⌋, 4) &nbsp; spiders = 1, or 2 from L6</code></div>'
   );
-  document.getElementById('btnStart').addEventListener('click', startLevel);
+
+  var picks = card.querySelectorAll('.pick');
+  for (var p = 0; p < picks.length; p++){
+    picks[p].addEventListener('click', function(){
+      sceneIdx = parseInt(this.getAttribute('data-scene'), 10) || 0;
+      startLevel();
+    });
+  }
 }
 
 function startLevel(){
   hideOverlay();
   cfg = levelConfig(level);
   squashed = 0; combo = 0;
-  mosquitoes = []; fx = [];
+  mosquitoes = []; friendlies = []; webs = []; fx = [];
+  gesture.active = false; gesture.pts = [];
   spawnTimer = 0.35;
+  // first swarm lands early enough that a fast player still meets one
+  swarmTimer = cfg.swarmEvery > 0 ? 3.5 : 0;
+  friendlyTimer = 0;
+  pendingClear = false;
   sceneFade = 1;
-  armFlash = 0; shake = 0;
-  bgKey = '';
+  armFlash = 0; shake = 0; swarmBanner = 0;
   renderHud();
   paintScene();
   state = 'playing';
@@ -1321,22 +1960,28 @@ function levelClear(){
 
   var next = level + 1;
   var nc = levelConfig(next);
-  var nextName = SCENES[(next - 1) % SCENES.length].name +
-                 (next > SCENES.length ? ' — Dusk' : '');
+  var nightfall = (next === 5);
+
+  var whatsNew = nc.quota + ' mosquitoes, ' + nc.speed + ' px/s, up to ' +
+                 nc.concurrent + ' at once, ' + nc.biteTime.toFixed(2) +
+                 's to swat a biter';
+  if (next === 3)      whatsNew += '. Swarms start now.';
+  else if (nc.swarmEvery > 0) whatsNew += '. Swarms of ' + nc.swarmSize +
+                                          ' every ' + nc.swarmEvery.toFixed(0) + 's.';
 
   showOverlay(
     '<span class="tag">Level ' + level + ' cleared</span>' +
-    '<h2>' + SCENES[(level - 1) % SCENES.length].name + ' is clear</h2>' +
-    '<p class="sub">Next stop: <b style="color:#6ee7a8">' + nextName + '</b></p>' +
+    '<h2>' + SCENES[sceneIdx].name + ' holding</h2>' +
+    '<p class="sub">' + (nightfall
+        ? 'The light is going. Same place, harder bugs.'
+        : 'Same place, harder bugs.') + '</p>' +
     '<div class="stats">' +
-      '<div class="stat"><b>' + cfg.quota + '</b><i>Squashed</i></div>' +
+      '<div class="stat"><b>' + cfg.quota + '</b><i>Cleared</i></div>' +
       '<div class="stat"><b>x' + bestCombo + '</b><i>Best combo</i></div>' +
-      '<div class="stat"><b>+' + bonus + '</b><i>Bonus</i></div>' +
+      '<div class="stat"><b>' + webKills + '</b><i>Web catches</i></div>' +
     '</div>' +
-    '<button class="btn" id="btnNext">Go to ' + nextName + '</button>' +
-    '<div class="curve">Level ' + next + ': <code>' + nc.quota + ' mosquitoes, ' +
-    nc.speed + ' px/s, up to ' + nc.concurrent + ' at once, ' +
-    nc.biteTime.toFixed(2) + 's to swat a biter.</code></div>'
+    '<button class="btn" id="btnNext">Start level ' + next + '</button>' +
+    '<div class="curve">Level ' + next + ': <code>' + whatsNew + '.</code></div>'
   );
   document.getElementById('btnNext').addEventListener('click', function(){
     level++;
@@ -1347,19 +1992,25 @@ function levelClear(){
 
 function endGame(won){
   state = won ? 'win' : 'gameover';
-  mosquitoes = [];
+  mosquitoes = []; webs = []; friendlies = [];
+  gesture.active = false; gesture.pts = [];
   renderHealth();
   showOverlay(
     '<span class="tag">' + (won ? 'You survived' : 'They got you') + '</span>' +
     '<h2>' + (won ? 'All 8 levels cleared 🏆' : 'Out of blood 🩸') + '</h2>' +
     '<p class="sub">' + (won
-        ? 'Amsterdam to the treehouse, mosquito-free.'
-        : 'You made it to level ' + level + ' — ' +
-          SCENES[(level - 1) % SCENES.length].name + '.') + '</p>' +
+        ? 'You held the ' + SCENES[sceneIdx].name + ' from noon to nightfall.'
+        : 'You made it to level ' + level + ' at the ' +
+          SCENES[sceneIdx].name + '.') + '</p>' +
     '<div class="stats">' +
       '<div class="stat"><b>' + score + '</b><i>Score</i></div>' +
       '<div class="stat"><b>' + totalSquashed + '</b><i>Squashed</i></div>' +
       '<div class="stat"><b>' + bitesTaken + '</b><i>Bites</i></div>' +
+    '</div>' +
+    '<div class="stats">' +
+      '<div class="stat"><b>' + websSpun + '</b><i>Webs spun</i></div>' +
+      '<div class="stat"><b>' + webKills + '</b><i>Web catches</i></div>' +
+      '<div class="stat"><b>' + friendliesHurt + '</b><i>Friends hit</i></div>' +
     '</div>' +
     '<button class="btn" id="btnAgain">Play Again</button>'
   );
