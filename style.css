@@ -1,0 +1,1196 @@
+:root {
+  --hud-h: 58px;
+  --ink: #f2f7f4;
+  --ink-dim: #9fb4ab;
+  --panel: rgba(12, 24, 20, 0.88);
+  --accent: #6ee7a8;
+  --danger: #ff5d5d;
+}
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: #0c1814;
+  color: var(--ink);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+body {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+/* ---------- HUD (fixed region, never overlaps play area) ---------- */
+#hud {
+  flex: 0 0 auto;
+  padding-top: env(safe-area-inset-top);
+  background: linear-gradient(#101f1a, #0c1814);
+  border-bottom: 1px solid rgba(110, 231, 168, 0.18);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  z-index: 5;
+}
+#hudRow {
+  height: var(--hud-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 max(12px, env(safe-area-inset-right)) 0
+    max(12px, env(safe-area-inset-left));
+}
+.hcell {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 0;
+}
+.hlabel {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.hval {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#sceneName {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#healthCell {
+  align-items: flex-end;
+}
+#health {
+  display: flex;
+  gap: 3px;
+  font-size: 16px;
+  line-height: 1;
+}
+.drop {
+  width: 11px;
+  height: 15px;
+  position: relative;
+}
+.drop svg {
+  display: block;
+  width: 11px;
+  height: 15px;
+}
+#progWrap {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+}
+#prog {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #6ee7a8, #4dd4e0);
+  transition: width 0.18s ease-out;
+}
+
+/* ---------- Stage ---------- */
+#stage {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: #0c1814;
+}
+#game {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+/* ---------- Overlays ---------- */
+#overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+  background: radial-gradient(
+    120% 80% at 50% 40%,
+    rgba(6, 16, 13, 0.72),
+    rgba(6, 16, 13, 0.94)
+  );
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+#overlay.hidden {
+  display: none;
+}
+.card {
+  width: 100%;
+  max-width: 340px;
+  max-height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y; /* the card may scroll; the canvas may not */
+  background: var(--panel);
+  border: 1px solid rgba(110, 231, 168, 0.28);
+  border-radius: 18px;
+  padding: 22px 20px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+.card h1 {
+  font-size: 26px;
+  line-height: 1.15;
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+}
+.card h2 {
+  font-size: 21px;
+  margin-bottom: 8px;
+}
+.sub {
+  font-size: 13px;
+  color: var(--ink-dim);
+  margin-bottom: 14px;
+}
+.rules {
+  text-align: left;
+  font-size: 13.5px;
+  line-height: 1.55;
+  margin: 0 auto 16px;
+  max-width: 270px;
+  color: #dfeae5;
+}
+.rules li {
+  list-style: none;
+  margin-bottom: 7px;
+  padding-left: 26px;
+  position: relative;
+}
+.rules li span {
+  position: absolute;
+  left: 0;
+  top: -1px;
+  font-size: 15px;
+}
+.stats {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+  margin: 12px 0 16px;
+}
+.stat b {
+  display: block;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+.stat i {
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.btn {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  min-height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(#6ee7a8, #37c98a);
+  color: #062018;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  font-family: inherit;
+  touch-action: manipulation;
+  box-shadow:
+    0 6px 0 #1f8e60,
+    0 10px 22px rgba(0, 0, 0, 0.4);
+}
+.btn:active {
+  transform: translateY(3px);
+  box-shadow:
+    0 3px 0 #1f8e60,
+    0 6px 14px rgba(0, 0, 0, 0.4);
+}
+.btn.ghost {
+  background: transparent;
+  color: var(--ink-dim);
+  box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  min-height: 46px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 10px;
+}
+/* scene picker */
+.picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 6px;
+}
+.pick {
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: #0d1c17;
+  color: var(--ink);
+  font-family: inherit;
+  text-align: left;
+  touch-action: manipulation;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.pick:active {
+  border-color: var(--accent);
+  transform: scale(0.97);
+}
+.pick img {
+  display: block;
+  width: 100%;
+  height: 82px;
+  object-fit: cover;
+  object-position: center 42%;
+}
+.pick span {
+  display: block;
+  padding: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.curve {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+  margin-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 12px;
+  text-align: left;
+}
+.curve code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  color: #bfe9d4;
+  font-size: 10.5px;
+}
+.tag {
+  display: inline-block;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+/* Field-journal interface. Gameplay keeps the original dark Canvas stage. */
+:root {
+  --paper: #fff4d8;
+  --pine: #163c32;
+  --forest: #245d44;
+  --gold: #e7b451;
+  --sage: #c9d7b4;
+}
+button,
+input {
+  font: inherit;
+}
+button {
+  touch-action: manipulation;
+}
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid #c17825;
+  outline-offset: 4px;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.56;
+}
+svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+body {
+  touch-action: auto;
+}
+body.menu #hud {
+  display: none;
+}
+body.menu #game {
+  opacity: 0.35;
+}
+body.menu #overlay {
+  padding: max(12px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+}
+#overlay {
+  background: rgba(12, 31, 25, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.card {
+  width: 100%;
+  max-width: 470px;
+  max-height: 100%;
+  padding: 24px;
+  background: var(--paper);
+  color: var(--pine);
+  border: 3px solid var(--pine);
+  border-radius: 26px;
+  box-shadow:
+    0 0 0 5px rgba(201, 215, 180, 0.25),
+    0 22px 65px #0005;
+  scrollbar-width: thin;
+  scrollbar-color: #9aa985 transparent;
+  text-align: center;
+  position: relative;
+  overscroll-behavior: contain;
+}
+.card h1,
+.card h2,
+.card h3 {
+  font-family: Georgia, "Times New Roman", serif;
+}
+.card h1 {
+  font-size: clamp(27px, 7.5vw, 36px);
+  line-height: 1.04;
+  letter-spacing: -0.045em;
+  font-weight: 700;
+}
+.card h2 {
+  font-size: 24px;
+  letter-spacing: -0.025em;
+}
+.card h3 {
+  font-size: 19px;
+}
+.card p {
+  line-height: 1.5;
+}
+.card .intro {
+  font-size: 14px;
+  color: #53644e;
+  margin: 10px auto 20px;
+  max-width: 340px;
+}
+.home .wordmark {
+  font:
+    600 13px/1 Georgia,
+    serif;
+  letter-spacing: 0.24em;
+  margin: 4px 0 10px;
+  color: #47614b;
+}
+.home h1 {
+  font-size: clamp(31px, 8.5vw, 43px);
+  margin-bottom: 14px;
+}
+.home-art {
+  width: 100%;
+  height: clamp(190px, 31dvh, 310px);
+  border-radius: 48% 48% 20px 20px;
+  object-fit: cover;
+  object-position: center 25%;
+  display: block;
+  margin: 0 auto;
+  border: 1px solid #a1ad87;
+}
+.home-line {
+  font:
+    18px/1.3 Georgia,
+    serif;
+  margin: 16px 0 20px;
+}
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--forest);
+  color: var(--paper);
+  border: 1px solid var(--pine);
+  box-shadow: 0 3px 0 #113828;
+  min-height: 54px;
+  border-radius: 50px;
+  font:
+    700 21px/1.2 Georgia,
+    serif;
+  letter-spacing: -0.02em;
+  padding: 12px 18px;
+  margin-top: 12px;
+}
+.btn:hover {
+  filter: brightness(1.08);
+}
+.btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #113828;
+}
+.btn svg {
+  width: 21px;
+  height: 21px;
+}
+.btn.secondary {
+  background: var(--sage);
+  color: var(--pine);
+  box-shadow: none;
+  border: 1.5px solid var(--forest);
+}
+.btn.ghost {
+  color: var(--pine);
+  border: 1px solid #a5b190;
+  font:
+    600 14px/1.3 system-ui,
+    sans-serif;
+  border-radius: 30px;
+  box-shadow: none;
+  padding: 12px;
+}
+.home-nav {
+  display: flex;
+  margin-top: 18px;
+}
+.home-nav button {
+  border: 0;
+  background: none;
+  color: var(--pine);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  min-height: 44px;
+  font-size: 14px;
+}
+.home-nav button + button {
+  border-left: 1px solid #aeb48e;
+}
+.save-note {
+  font-size: 11px;
+  color: #5d6b53;
+  margin: 16px 0 0;
+}
+.icon-btn {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  background: none;
+  color: inherit;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.icon-btn:hover {
+  background: #c9d7b433;
+}
+.screen-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -8px -10px 14px;
+}
+.screen-heading h1 {
+  font-size: 29px;
+  line-height: 1.1;
+  flex: 1;
+}
+.screen-heading > svg {
+  color: #6a8056;
+  width: 26px;
+}
+.chapter {
+  margin: 0 0 20px;
+}
+.chapter-banner {
+  position: relative;
+  height: 112px;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  border: 1px solid #b8c29d;
+}
+.chapter-banner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 43%;
+}
+.chapter-banner h2 {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #fff4d8eb;
+  font-size: 20px;
+  padding: 6px 12px;
+  margin: 0;
+  text-align: left;
+}
+.stage-row {
+  width: 100%;
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 9px;
+  background: transparent;
+  color: var(--pine);
+  border: 1px solid #c8c8a4;
+  border-top: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.stage-row:last-child {
+  border-radius: 0 0 14px 14px;
+}
+.stage-row:not(:disabled):hover {
+  background: #e9e8c6;
+}
+.stage-number {
+  width: 29px;
+  height: 29px;
+  border-radius: 50%;
+  background: #788d60;
+  color: var(--paper);
+  font:
+    700 18px/29px Georgia,
+    serif;
+  text-align: center;
+  flex-shrink: 0;
+}
+.stage-info {
+  flex: 1;
+  min-width: 0;
+}
+.stage-info b {
+  font:
+    700 16px/1.2 Georgia,
+    serif;
+  display: block;
+}
+.stage-info small {
+  font-size: 10px;
+  line-height: 1.3;
+  color: #53644e;
+  display: block;
+  margin-top: 4px;
+}
+.stage-row > svg {
+  width: 17px;
+  height: 17px;
+}
+.mini-medals {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  vertical-align: middle;
+}
+.mini-medals span {
+  color: #bbb692;
+}
+.mini-medals .earned {
+  color: #ab6c1f;
+}
+.mini-medals .earned svg {
+  fill: #efc45c;
+}
+.mini-medals svg {
+  width: 18px;
+  height: 18px;
+}
+.brief-art {
+  display: block;
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  object-position: center 40%;
+  border-radius: 16px;
+  margin-bottom: 18px;
+}
+.stage-title {
+  font-size: 30px !important;
+}
+.objective-list {
+  list-style: none;
+  text-align: left;
+  border-block: 1px solid #c8c8a4;
+  padding: 12px 0;
+  margin-bottom: 16px;
+}
+.objective-list li {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 14px;
+  line-height: 1.35;
+  padding: 8px 0;
+}
+.objective-list svg {
+  width: 21px;
+  height: 21px;
+  color: #a56b1a;
+}
+.tip {
+  font-size: 14px;
+  color: #4b604a;
+  background: #dbe1bd88;
+  border-left: 3px solid #7c905e;
+  padding: 13px 15px;
+  text-align: left;
+  margin: 15px 0;
+}
+.result-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 4px auto 15px;
+  width: 52px;
+  height: 52px;
+  background: #dce2bc;
+  border-radius: 50%;
+  color: #5e7848;
+}
+.result-mark svg {
+  width: 31px;
+  height: 31px;
+}
+.result h1 {
+  font-size: clamp(29px, 8vw, 39px);
+}
+.medal-shelf {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 26px 0 20px;
+}
+.medal {
+  font-size: 12px;
+  line-height: 1.3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  color: #56634d;
+}
+.medal > div {
+  width: 70px;
+  height: 70px;
+  border: 2px solid #c2be9b;
+  box-shadow: inset 0 0 0 4px #fff4d8;
+  border-radius: 50%;
+  background: #e3dfbb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.medal.won > div {
+  background: #e7b451;
+  border-color: #9e661b;
+  box-shadow: inset 0 0 0 4px #f6d588;
+}
+.medal svg {
+  width: 32px;
+  height: 32px;
+}
+.medal.won svg {
+  fill: #936320;
+  stroke: #936320;
+}
+.medal b {
+  font:
+    700 15px/1.15 Georgia,
+    serif;
+}
+.medal small {
+  font-size: 10px;
+}
+.stats {
+  gap: 0;
+  justify-content: stretch;
+  padding: 20px 0;
+  border-block: 1px solid #bdc19c;
+  margin: 18px 0;
+}
+.stat {
+  flex: 1;
+  min-width: 0;
+  padding: 0 7px;
+}
+.stat + .stat {
+  border-left: 1px solid #bdc19c;
+}
+.stat b {
+  font:
+    700 30px/1.15 Georgia,
+    serif;
+  letter-spacing: -0.03em;
+}
+.stat i {
+  font:
+    500 10px/1.3 system-ui,
+    sans-serif;
+  color: #53644e;
+  letter-spacing: 0.01em;
+  display: block;
+  margin-top: 5px;
+}
+.result-note {
+  font-size: 12px;
+  color: #506442;
+}
+.split-actions {
+  display: flex;
+  gap: 10px;
+}
+.split-actions .btn {
+  flex: 1;
+  font-size: 17px;
+}
+.split-actions .btn svg {
+  width: 19px;
+  height: 19px;
+}
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  text-align: left;
+  border-bottom: 1px solid #c8c8a4;
+  padding: 16px 0;
+  min-height: 72px;
+  cursor: pointer;
+}
+.setting b {
+  display: block;
+  font-size: 15px;
+}
+.setting small {
+  display: block;
+  color: #53644e;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+.setting input {
+  accent-color: var(--forest);
+  width: 25px;
+  height: 25px;
+  flex-shrink: 0;
+}
+.journal-title {
+  font:
+    italic 16px/1.3 Georgia,
+    serif;
+  color: #687c56;
+  margin-bottom: 20px;
+}
+.field-notes {
+  text-align: left;
+}
+.field-notes article {
+  padding: 14px 0;
+  border-bottom: 1px solid #c8c8a4;
+}
+.field-notes h2 {
+  font-size: 21px;
+  margin: 0 0 5px;
+}
+.field-notes p {
+  font-size: 14px;
+  color: #53644e;
+}
+.section-title {
+  margin: 27px 0 12px;
+  font-size: 26px !important;
+}
+.achievement {
+  display: flex;
+  gap: 14px;
+  text-align: left;
+  padding: 17px 0;
+  border-bottom: 1px solid #c8c8a4;
+}
+.achievement-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e1dfc0;
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+}
+.achievement.unlocked .achievement-icon {
+  background: #e7b451;
+}
+.achievement.unlocked .achievement-icon svg {
+  fill: #94611b;
+  stroke: #94611b;
+}
+.achievement h3 {
+  font-size: 19px;
+  margin-bottom: 4px;
+}
+.achievement p {
+  font-size: 13px;
+  color: #53644e;
+}
+.achievement small {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #7e6026;
+}
+.title-choice {
+  display: block;
+  width: 100%;
+  border: 1px solid #81946b;
+  border-radius: 25px;
+  padding: 12px;
+  margin-top: 10px;
+  background: none;
+  color: var(--pine);
+}
+.postcard {
+  margin: 20px 0 10px;
+  transform: rotate(-1.5deg);
+  padding: 10px;
+  background: #fffbee;
+  box-shadow: 0 3px 9px #163c3225;
+}
+.postcard img {
+  width: 100%;
+  height: 145px;
+  object-fit: cover;
+  object-position: center 40%;
+}
+.postcard figcaption {
+  font:
+    italic 13px Georgia,
+    serif;
+  margin: 8px 0;
+}
+#playMeta {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 12px 9px;
+  font-size: 11px;
+  color: #c9d7b4;
+}
+#hud {
+  padding-top: env(safe-area-inset-top);
+}
+#hudRow {
+  padding-inline: max(6px, env(safe-area-inset-left));
+  gap: 7px;
+}
+#hud .icon-btn {
+  color: #e8efd9;
+  min-width: 40px;
+  min-height: 44px;
+}
+#sceneName {
+  font-size: 11px;
+}
+#score {
+  font-size: 18px;
+}
+#health {
+  gap: 4px;
+}
+.health-seed {
+  width: 10px;
+  height: 14px;
+  background: #fff2;
+  border-radius: 70% 70% 60% 60%;
+  transform: rotate(15deg);
+}
+.health-seed.full {
+  background: #f46f6c;
+}
+#coach {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 8;
+  background: var(--paper);
+  color: var(--pine);
+  border: 2px solid var(--pine);
+  border-radius: 20px;
+  padding: 18px;
+  text-align: center;
+  max-width: 420px;
+  margin-inline: auto;
+  box-shadow: 0 8px 30px #0004;
+}
+#coach b {
+  font:
+    700 22px/1.2 Georgia,
+    serif;
+}
+#coach p {
+  font-size: 14px;
+  line-height: 1.4;
+  margin-top: 6px;
+}
+#coach button {
+  min-height: 44px;
+  display: block;
+  padding: 10px 20px;
+  border: 0;
+  border-radius: 30px;
+  margin: 12px auto 0;
+  background: var(--forest);
+  color: var(--paper);
+  font-weight: 700;
+}
+#coach .coach-skip {
+  background: none;
+  color: #53644e;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+#toast {
+  position: absolute;
+  left: 50%;
+  top: 15px;
+  transform: translate(-50%, -140%);
+  max-width: min(90%, 400px);
+  width: max-content;
+  padding: 12px 19px;
+  border: 1px solid #acc59888;
+  border-radius: 14px;
+  background: #163c32f5;
+  color: #fff4d8;
+  z-index: 30;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+  opacity: 0;
+  transition:
+    transform 0.2s,
+    opacity 0.2s;
+  pointer-events: none;
+}
+#toast.visible {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+.contrast #game {
+  filter: contrast(1.2);
+}
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+@media (max-width: 360px) {
+  .card {
+    padding: 18px;
+    border-radius: 21px;
+  }
+  .home h1 {
+    font-size: 33px;
+  }
+  .home-art {
+    height: 180px;
+  }
+  .home-line {
+    font-size: 17px;
+    margin: 12px 0;
+  }
+  .home-nav {
+    margin-top: 12px;
+  }
+  .home .save-note {
+    margin-top: 8px;
+  }
+  .stage-row {
+    gap: 7px;
+    padding-inline: 6px;
+  }
+  .stage-info b {
+    font-size: 15px;
+  }
+  .mini-medals svg {
+    width: 15px;
+    height: 15px;
+  }
+  .medal-shelf {
+    gap: 8px;
+  }
+  .medal > div {
+    width: 61px;
+    height: 61px;
+  }
+  .medal b {
+    font-size: 13px;
+  }
+}
+@media (max-height: 650px) and (orientation: portrait) {
+  .card {
+    padding: 17px;
+  }
+  .home-art {
+    height: 155px;
+  }
+  .home h1 {
+    font-size: 32px;
+    line-height: 1;
+    margin-bottom: 9px;
+  }
+  .home .wordmark {
+    margin: 0 0 7px;
+  }
+  .home-line {
+    margin: 10px 0 12px;
+    font-size: 16px;
+  }
+  .home .btn {
+    min-height: 46px;
+    padding: 10px;
+    margin-top: 9px;
+    font-size: 20px;
+  }
+  .home-nav {
+    margin-top: 8px;
+  }
+  .home .save-note {
+    margin-top: 4px;
+    font-size: 10px;
+  }
+}
+@media (orientation: landscape) and (max-height: 550px) {
+  body.menu #overlay {
+    align-items: flex-start;
+  }
+  .card {
+    max-width: 640px;
+  }
+  .home {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 24px;
+    align-items: center;
+  }
+  .home .wordmark,
+  .home h1,
+  .home-line {
+    grid-column: 1;
+  }
+  .home .wordmark {
+    font-size: 11px;
+    margin: 0;
+  }
+  .home h1 {
+    font-size: 31px;
+    margin: 0;
+  }
+  .home-art {
+    grid-column: 2;
+    grid-row: 1/5;
+    height: 155px;
+    max-width: 260px;
+  }
+  .home-line {
+    font-size: 15px;
+    margin: 7px 0;
+  }
+  .home .btn {
+    grid-column: 1;
+    margin-top: 6px;
+    min-height: 44px;
+    font-size: 19px;
+    padding: 9px;
+  }
+  .home .secondary {
+    grid-column: 2;
+    grid-row: 5;
+  }
+  .home-nav {
+    grid-column: 1/3;
+    margin-top: 6px;
+  }
+  .home .save-note {
+    grid-column: 1/3;
+    margin-top: 0;
+  }
+  #coach {
+    max-width: 340px;
+    padding: 10px;
+    right: 12px;
+    left: auto;
+    bottom: 8px;
+  }
+  #coach b {
+    font-size: 18px;
+  }
+  #coach p {
+    font-size: 12px;
+  }
+  #coach button {
+    margin-top: 5px;
+  }
+}
+.achievement-banner {
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 12px 8px;
+  margin-top: 14px;
+  border-top: 1px solid #c2c799;
+  color: #426431;
+}
