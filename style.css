@@ -1194,3 +1194,5 @@ body.menu #overlay {
   border-top: 1px solid #c2c799;
   color: #426431;
 }
+
+#bandStatus { padding: 0 12px 5px; font-size: 10px; color: #d5e85b; text-align: center; }

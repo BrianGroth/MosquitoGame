@@ -20,8 +20,10 @@ accounts, ads, analytics, or payment integration.
 
 ## Adventure
 
-Eight named stages visit Amsterdam Canal, Minnesota Lakefront, Campground, and
-Treehouse. The next stage unlocks when you clear the previous quota. Each stage
+Twelve named stages form six chapters of two stages each: Amsterdam Canal,
+Minnesota Lakefront, Campground, Treehouse, Moonlit Canal, and Lakeside Finale.
+The last two revisit canal and lakeside artwork with faster bugs and larger crowds.
+The next stage unlocks when you clear the previous quota. Each stage
 starts with five health and its own score; Continue resumes at a **stage boundary**.
 
 - Tap a mosquito to swat it. Each consecutive hit grows your streak and score
@@ -33,6 +35,15 @@ starts with five health and its own score; Continue resumes at a **stage boundar
   still being consumed. Its knots show remaining capacity.
 - Later encounters add swarms with entry-side warnings, lakeside gusts and
   gold-ringed darters that wind up before diving.
+- From Chapter 3 (stage 5), every fifth arriving bug is a red-eyed fly. Flies
+  do not sting, but need squashing; they earn the same swat points, streak and
+  quota credit as mosquitoes, including the landing bonus and web catches.
+- Clear two consecutive numbered stages without a mosquito sting to earn a
+  yellow-green citronella wristband. It keeps hostile bugs off the wrist and
+  hand, while the forearm stays exposed. A forearm sting removes it immediately;
+  two new consecutive clean stages earn it again. Replaying the same stage
+  cannot earn it. The band and clean-stage progress persist across saves.
+- Spiders have bright brown bodies and legs to distinguish them from mosquitoes.
 - Pause anytime with the HUD button or Escape. Backgrounding also pauses play.
 
 An interactive practice teaches the three main interactions. Replay it from
@@ -47,7 +58,7 @@ to earn all three in one attempt. Best score and best streak never decrease.
 The field guide tracks eight permanent achievements and lifetime catches/swats.
 Rewards include a golden swat effect, golden web silk, journal titles and a
 chapter postcard. Unlock and equip rewards through the field guide. Master
-Naturalist requires all 24 **standard-mode** medals.
+Naturalist requires all 36 **standard-mode** medals.
 
 Settings include sound effects, quiet ambience, motion effects, high contrast,
 optional haptics and Gentle mode. Device reduced-motion preferences are always
@@ -59,7 +70,9 @@ separate from standard records; either mode can unlock the next stage.
 
 Progress is stored on this browser/device under `lories-picnic-v1` in localStorage.
 Settings, unlocks, objective medals, achievements, records and lifetime counters
-are retained. A stage restarts from its beginning after reload; there is no
+are retained. Existing eight-stage saves keep their records and unlock stage 9
+after completing stage 8. Earned cosmetics remain earned. A stage restarts from its beginning after reload;
+there is no
 mid-stage save. Clearing browser data removes progress. Storage errors show a
 message and allow session-only play. Corrupt or newer-version saves are not
 silently overwritten.
@@ -95,5 +108,5 @@ include iPhone Safari, audio interruptions, multitouch/cancelled gestures,
 background/resume, safe areas, rotation and offline reload. Desktop Chromium
 checks do not establish native iPhone behavior.
 
-This release implements the eight-stage foundation. Score-attack, seeded daily
-challenges, online leaderboards, a larger campaign and purchases are future work.
+This release expands the campaign to twelve stages. Score-attack, seeded daily
+challenges, online leaderboards and purchases are future work.
