@@ -47,19 +47,19 @@
       name: "Lantern Watch",
       scene: 2,
       chapter: "Campground",
-      note: "Evening settles in. Stay steady.",
+      note: "Evening settles in. Red-eyed flies join the mosquitoes.",
       skill: "Reach an 8-hit streak",
       goal: "streak",
       target: 8,
       waves: true,
-      hint: "Swarm warnings point to the entry side. Aim carefully, not wildly.",
+      hint: "Swat red-eyed flies for mosquito points. Swarm warnings point to the entry side.",
     },
     {
       name: "Silk & Embers",
       scene: 2,
       chapter: "Campground",
       note: "Two spider allies. One very busy picnic.",
-      skill: "Catch 3 mosquitoes in webs",
+      skill: "Catch 3 bugs in webs",
       goal: "web",
       target: 3,
       waves: true,
@@ -80,13 +80,41 @@
       name: "The Last Picnic",
       scene: 3,
       chapter: "Treehouse",
-      note: "A final canopy rush. Bring your spider friends.",
-      skill: "Catch 3 mosquitoes in webs",
+      note: "A busy canopy rush. Bring your spider friends.",
+      skill: "Catch 3 bugs in webs",
       goal: "web",
       target: 3,
       darters: true,
       waves: true,
       hint: "Mix precise taps with webs. Every catch clears part of the quota.",
+    },
+    {
+      name: "Moonlit Rush", scene: 0, chapter: "Moonlit Canal",
+      note: "Back on the canal, the moon brings a faster crowd.",
+      skill: "Reach a 12-hit streak", goal: "streak", target: 12,
+      darters: true, waves: true, weather: true,
+      hint: "Swat the round, red-eyed flies too. Your wristband leaves the forearm exposed.",
+    },
+    {
+      name: "Midnight Silk", scene: 0, chapter: "Moonlit Canal",
+      note: "More wings over the water. Put your spider allies to work.",
+      skill: "Catch 4 bugs in webs", goal: "web", target: 4,
+      darters: true, waves: true,
+      hint: "Renew your webs as their three catches run out.",
+    },
+    {
+      name: "Lakeside Patrol", scene: 1, chapter: "Lakeside Finale",
+      note: "One last lakeside visit, with the busiest bugs yet.",
+      skill: "Reach a 15-hit streak", goal: "streak", target: 15,
+      darters: true, waves: true, weather: true,
+      hint: "Quick, accurate taps keep your streak alive through the gusts.",
+    },
+    {
+      name: "The Grand Picnic", scene: 1, chapter: "Lakeside Finale",
+      note: "The final rush. Protect the picnic with taps and silk.",
+      skill: "Catch 5 bugs in webs", goal: "web", target: 5,
+      darters: true, waves: true, weather: true,
+      hint: "Use both spiders, and keep watching your exposed forearm.",
     },
   ];
   var ACHIEVEMENTS = [
@@ -129,13 +157,13 @@
     {
       id: "picnic",
       name: "Picnic Protector",
-      description: "Complete all eight stages.",
+      description: "Complete all twelve stages.",
       reward: "Picnic Protector title",
     },
     {
       id: "master",
       name: "Master Naturalist",
-      description: "Earn all 24 campaign medals in standard mode.",
+      description: "Earn all 36 campaign medals in standard mode.",
       reward: "Master Naturalist title",
     },
   ];
@@ -143,6 +171,7 @@
     return {
       version: 1,
       unlocked: 1,
+      citronella: { band: false, cleanStage: 0 },
       active: 1,
       tutorial: false,
       settings: {
@@ -167,8 +196,15 @@
   function clean(raw) {
     var p = fresh();
     if (!raw || raw.version !== 1) return p;
-    p.unlocked = Math.max(1, integer(raw.unlocked, 1, 8));
-    p.active = Math.max(1, Math.min(p.unlocked, integer(raw.active, 1, 8)));
+    p.unlocked = Math.max(1, integer(raw.unlocked, 1, STAGES.length));
+    p.active = Math.max(1, Math.min(p.unlocked, integer(raw.active, 1, STAGES.length)));
+    // Old eight-stage saves continue directly into the expanded campaign.
+    if (Array.isArray(raw.completed) && raw.completed.indexOf(8) >= 0 && p.unlocked === 8)
+      p.unlocked = 9;
+    if (p.unlocked === 9 && p.active === 8 && Array.isArray(raw.completed) && raw.completed.indexOf(8) >= 0)
+      p.active = 9;
+    p.citronella.band = (raw.citronella || {}).band === true;
+    p.citronella.cleanStage = integer((raw.citronella || {}).cleanStage, 0, STAGES.length);
     p.tutorial = raw.tutorial === true;
     Object.keys(p.settings).forEach(function (k) {
       if (
@@ -209,13 +245,13 @@
       p.settings.title = "Lorie’s field journal";
     p.completed = Array.isArray(raw.completed)
       ? raw.completed.filter(function (n, i, a) {
-          return Number.isInteger(n) && n >= 1 && n <= 8 && a.indexOf(n) === i;
+          return Number.isInteger(n) && n >= 1 && n <= STAGES.length && a.indexOf(n) === i;
         })
       : [];
     p.lifetime.swats = integer((raw.lifetime || {}).swats, 0, 1e9);
     p.lifetime.webs = integer((raw.lifetime || {}).webs, 0, 1e9);
     ["normal", "assist"].forEach(function (mode) {
-      for (var n = 1; n <= 8; n++) {
+      for (var n = 1; n <= STAGES.length; n++) {
         var key = mode + ":" + n,
           r = (raw.records || {})[key];
         if (r && typeof r === "object")
@@ -289,6 +325,18 @@
       return unlocked;
     }
     function complete(level, stats, assist) {
+      var protection = p.citronella;
+      var bandEarned = false;
+      if (stats.bites === 0) {
+        if (protection.cleanStage === level - 1 && protection.cleanStage > 0 && !protection.band) {
+          protection.band = true;
+          bandEarned = true;
+        }
+        protection.cleanStage = level;
+      } else {
+        protection.band = false;
+        protection.cleanStage = 0;
+      }
       var stage = STAGES[level - 1],
         skill =
           stage.goal === "streak"
@@ -314,26 +362,27 @@
           return v || previous.medals[i];
         }),
       };
-      p.unlocked = Math.max(p.unlocked, Math.min(8, level + 1));
-      p.active = Math.min(8, level + 1);
+      p.unlocked = Math.max(p.unlocked, Math.min(STAGES.length, level + 1));
+      p.active = Math.min(STAGES.length, level + 1);
       if (p.completed.indexOf(level) < 0) p.completed.push(level);
       var awards = [];
       function give(id) {
         if (award(id)) awards.push(id);
       }
       if (stats.friendliesSeen > 0 && stats.friends === 0) give("gentle");
-      for (var n = 1; n <= 8; n += 2)
+      for (var n = 1; n <= STAGES.length; n += 2)
         if (p.completed.indexOf(n) >= 0 && p.completed.indexOf(n + 1) >= 0)
           give("sunset");
-      if (p.completed.length === 8) give("picnic");
+      if (p.completed.length === STAGES.length) give("picnic");
       var all = true;
-      for (var j = 1; j <= 8; j++) {
+      for (var j = 1; j <= STAGES.length; j++) {
         var r = p.records["normal:" + j];
         if (!r || !r.medals.every(Boolean)) all = false;
       }
       if (all) give("master");
       save();
       return {
+        bandEarned: bandEarned,
         earned: earned,
         newMedals: newMedals,
         newBest: newBest,
@@ -346,6 +395,14 @@
       save: save,
       event: event,
       complete: complete,
+      breakCleanRun: function () { p.citronella.cleanStage = 0; save(); },
+      sting: function () {
+        var lost = p.citronella.band;
+        p.citronella.band = false;
+        p.citronella.cleanStage = 0;
+        save();
+        return lost;
+      },
       warning: function () {
         return warning;
       },

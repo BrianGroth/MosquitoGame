@@ -14,7 +14,7 @@
    ========================================================================= */
 
   // ---------------------------------------------------------------- constants
-  var TOTAL_LEVELS = 8;
+  var TOTAL_LEVELS = Picnic.STAGES.length;
   var MAX_HEALTH = 5;
   var HIT_RADIUS = 34; // CSS px -> 68px touch diameter, well over the 44pt minimum
 
@@ -25,16 +25,14 @@
     { key: "treehouse", name: "Treehouse" },
   ];
 
-  /* Difficulty curve — every value below is a stated formula of the level L (1-8).
-   The scene is the player's choice and never changes; this is the only thing
-   that escalates. Shown on the title card so nothing is hidden. */
+  /* Stage difficulty scales with L (1-12); stage definitions add encounters. */
   function levelConfig(L) {
     var i = L - 1;
     var assist = settings.assist;
     return {
       quota: 5 + 2 * i, // mosquitoes to squash
       speed: (55 + 20 * i) * (assist ? 0.72 : 1), // px/sec cruising speed
-      concurrent: Math.min(2 + Math.floor(i * 0.8), 7),
+      concurrent: Math.min(2 + Math.floor(i * 0.8), 10),
       spawnGap: Math.max(0.35, 1.4 - 0.14 * i), // sec between spawns
       biteTime: Math.max(1.0, 2.4 - 0.18 * i) * (assist ? 1.55 : 1), // sec to swat a biter
       wander: Math.max(0.6, 2.6 - 0.25 * i), // sec of free flight before it dives
@@ -44,7 +42,7 @@
         : L < 3
           ? 0
           : Math.max(6.0, 15.0 - 1.5 * (L - 3)),
-      swarmSize: Math.min(3 + Math.floor((L - 3) / 2), 6),
+      swarmSize: Math.min(3 + Math.floor((L - 3) / 2), 8),
       // friendly bugs share the screen and must NOT be squashed
       fireflies: Math.min(1 + Math.floor(i / 2), 4),
       spiders: L >= 6 ? 2 : 1,
@@ -175,7 +173,7 @@
   setTimeout(resize, 250);
 
   // ================================================================= SCENES
-  /* The campaign visits four places. Campground and canopy stages use evening light. */
+  /* Later chapters revisit canal and lakeside scenes in evening light. */
   function isDusk() {
     return level > 4;
   }
@@ -1038,6 +1036,7 @@
       y = Math.random() * H * 0.6;
     }
 
+    var isFly = state !== "tutorial" && level >= 5 && ++spawnCount % 5 === 0;
     var ang = Math.random() * Math.PI * 2;
     mosquitoes.push({
       x: x,
@@ -1052,7 +1051,8 @@
       dead: false,
       scale: 0, // pops in so it is never a surprise pixel
       wing: Math.random() * 6.283,
-      darter: Picnic.STAGES[level - 1].darters && spawnCount++ % 3 === 0,
+      kind: isFly ? "housefly" : "mosquito",
+      darter: !isFly && Picnic.STAGES[level - 1].darters && mosquitoes.length % 3 === 0,
       windup: 0,
       web: null,
       stuckT: 0,
@@ -1279,12 +1279,27 @@
     }
   }
 
+  function wristProtected(x, y) {
+    return state !== "tutorial" && profile.data.citronella.band &&
+      x >= arm.wristX - arm.h * 0.72 && Math.abs(y - arm.y) < arm.h * 1.7;
+  }
+  function landingTarget(m) {
+    // Without a band, bugs can reach the wrist and palm as well as the forearm.
+    var right = profile.data.citronella.band ? arm.wristX - arm.h * 0.9 : W * 0.86;
+    m.tx = W * 0.07 + Math.random() * Math.max(1, right - W * 0.07);
+    m.ty = arm.biteY + (Math.random() - 0.5) * arm.h * 0.85;
+  }
   function updateMosquitoes(dt) {
     for (var i = mosquitoes.length - 1; i >= 0; i--) {
       /* A bite can drop the last drop of blood, and endGame() empties this very
        list underneath us. Bail out rather than walking off the end of it. */
       if (state !== "playing" && state !== "tutorial") return;
       var m = mosquitoes[i];
+      if (wristProtected(m.x, m.y) || ((m.mode === "dive" || m.mode === "bite" || m.mode === "windup") && wristProtected(m.tx, m.ty))) {
+        m.x = Math.min(m.x, arm.wristX - arm.h);
+        landingTarget(m);
+        if (m.mode === "bite") m.mode = "dive";
+      }
       m.scale = Math.min(1, m.scale + dt * 4);
       m.wing += dt * 34;
       m.phase += dt * m.wobble * 3.4;
@@ -1361,10 +1376,7 @@
         if (m.t <= 0) {
           m.mode = m.darter ? "windup" : "dive";
           m.windup = 0.8;
-          var a = Math.random() * 6.283,
-            rr = Math.sqrt(Math.random());
-          m.tx = arm.biteX + Math.cos(a) * arm.biteRX * rr;
-          m.ty = arm.biteY + Math.sin(a) * arm.biteRY * rr;
+          landingTarget(m);
         }
       } else if (m.mode === "windup") {
         m.windup -= dt;
@@ -1385,7 +1397,7 @@
         m.x = m.tx + Math.cos(m.phase * 2) * 1.6;
         m.y = m.ty + Math.sin(m.phase * 2) * 1.2;
         if (m.biteT <= 0) {
-          takeBite(m);
+          if (m.kind !== "housefly") takeBite(m);
           m.mode = "flee";
           m.vx = (Math.random() - 0.5) * cfg.speed * 2;
           m.vy = -cfg.speed * 1.7;
@@ -1400,6 +1412,9 @@
   }
 
   function takeBite(m) {
+    if (wristProtected(m.x, m.y) || m.kind === "housefly") return;
+    if (state !== "tutorial" && profile.sting()) announce("Arm stung · citronella wristband lost. Clear two consecutive stages without a sting to earn it again.");
+    renderBand();
     health--;
     audio.play("bite");
     haptic();
@@ -1604,7 +1619,37 @@
   }
 
   // ================================================================= DRAWING
+  function drawFly(m) {
+    ctx.save();
+    ctx.translate(m.x, m.y);
+    ctx.scale(m.scale, m.scale);
+    ctx.strokeStyle = settings.contrast ? "#fff" : "#b6c5cc";
+    ctx.lineWidth = 1.5;
+    ctx.fillStyle = "rgba(220,241,250,.85)";
+    for (var side = -1; side <= 1; side += 2) {
+      ctx.beginPath();
+      ctx.ellipse(2, side * (8 + Math.sin(m.wing) * 2), 12, 5, side * 0.5, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = "#b6c5cc";
+      for (var leg = -1; leg <= 1; leg++) {
+        ctx.beginPath(); ctx.moveTo(leg * 4, side * 3);
+        ctx.lineTo(leg * 7, side * 11); ctx.stroke();
+      }
+    }
+    ctx.fillStyle = "#455b62";
+    ctx.beginPath(); ctx.ellipse(3, 0, 10, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#a4b7bc";
+    for (var stripe = 0; stripe < 3; stripe++) {
+      ctx.beginPath(); ctx.moveTo(stripe * 4, -5); ctx.lineTo(stripe * 4, 5); ctx.stroke();
+    }
+    ctx.fillStyle = "#ce4935";
+    for (var eye = -1; eye <= 1; eye += 2) {
+      ctx.beginPath(); ctx.ellipse(-7, eye * 3.5, 4.5, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
   function drawMosquito(m) {
+    if (m.kind === "housefly") { drawFly(m); return; }
     var s = m.scale;
     ctx.save();
     ctx.translate(m.x, m.y);
@@ -1859,6 +1904,14 @@
     armPath(ctx, th, wristX);
     ctx.clip();
 
+    if (state !== "tutorial" && profile.data.citronella.band) {
+      ctx.fillStyle = "#d5e85b";
+      ctx.strokeStyle = "#71832d";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.rect(wristX - th * 0.72, -th * 0.85, th * 0.48, th * 1.7);
+      ctx.fill(); ctx.stroke();
+    }
     // wrist creases
     ctx.strokeStyle = "rgba(126,76,46,.34)";
     ctx.lineWidth = 2.2;
@@ -1976,7 +2029,7 @@
     ctx.fill();
 
     // eight legs, scuttling
-    ctx.strokeStyle = "#241c16";
+    ctx.strokeStyle = "#a66532";
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -1995,15 +2048,15 @@
     }
 
     // abdomen + head
-    ctx.fillStyle = "#33281f";
+    ctx.fillStyle = "#bd7a3e";
     ctx.beginPath();
     ctx.ellipse(6, 0, 9, 7.5, 0, 0, 6.284);
     ctx.fill();
-    ctx.fillStyle = "rgba(226,196,120,.55)"; // marking
+    ctx.fillStyle = "#f0bf78"; // marking
     ctx.beginPath();
     ctx.ellipse(7, 0, 4, 3, 0, 0, 6.284);
     ctx.fill();
-    ctx.fillStyle = "#241c16";
+    ctx.fillStyle = "#a66532";
     ctx.beginPath();
     ctx.ellipse(-4, 0, 5.5, 4.6, 0, 0, 6.284);
     ctx.fill();
@@ -2680,13 +2733,13 @@
     state = "map";
     var html =
       screenHeader("Your adventure") +
-      '<p class="intro">Eight stages. Four places worth protecting.</p><div class="chapter-list">';
-    for (var c = 0; c < 4; c++) {
+      '<p class="intro">Twelve stages. Six chapters to protect.</p><div class="chapter-list">';
+    for (var c = 0; c < TOTAL_LEVELS / 2; c++) {
       html +=
         '<section class="chapter"><div class="chapter-banner"><img src="' +
-        sceneThumb(c) +
+        sceneThumb(Picnic.STAGES[c * 2].scene) +
         '" alt=""><h2>' +
-        SCENES[c].name +
+        "Chapter " + (c + 1) + " · " + Picnic.STAGES[c * 2].chapter +
         "</h2></div>";
       for (var n = c * 2 + 1; n <= c * 2 + 2; n++) {
         var unlocked = n <= profile.data.unlocked,
@@ -2744,7 +2797,7 @@
         stage.note +
         '</p><ul class="objective-list"><li>' +
         icon("star") +
-        "Clear the mosquito quota</li><li>" +
+        "Clear the bug quota</li><li>" +
         icon("star") +
         "Take no bites</li><li>" +
         icon("star") +
@@ -2770,6 +2823,7 @@
     });
   }
   function beginStage(n) {
+    if (profile.data.citronella.cleanStage !== n - 1) profile.breakCleanRun();
     level = n;
     sceneIdx = Picnic.STAGES[n - 1].scene;
     currentStage = Picnic.STAGES[n - 1];
@@ -2856,7 +2910,7 @@
       '<div class="result"><div class="result-mark">' +
       icon("leaf") +
       "</div><h1>" +
-      (level === 8 ? "Every picnic protected!" : "Picnic protected!") +
+      (level === TOTAL_LEVELS ? "Every picnic protected!" : "Picnic protected!") +
       '</h1><p class="intro">' +
       currentStage.name +
       " · " +
@@ -2887,7 +2941,8 @@
       " · " +
       completion.record.medals.filter(Boolean).length +
       "/3 medals collected</p>";
-    if (level < 8)
+    if (completion.bandEarned) html += '<p class="tip">Citronella wristband earned! Your wrist and hand are protected. A sting on your forearm removes it.</p>';
+    if (level < TOTAL_LEVELS)
       html +=
         '<button id="btnNext" class="btn">Next stage' +
         icon("play") +
@@ -2907,7 +2962,7 @@
       "</div>";
     showOverlay(html);
     on("btnNext", function () {
-      if (level < 8) showBrief(level + 1);
+      if (level < TOTAL_LEVELS) showBrief(level + 1);
       else showChapters();
     });
     on("btnRetry", function () {
@@ -2917,6 +2972,7 @@
     notifyAwards(completion.awards);
   }
   function endGame() {
+    profile.breakCleanRun();
     state = "gameover";
     mosquitoes = [];
     webs = [];
@@ -3045,7 +3101,7 @@
         screenHeader("Field guide") +
         '<p class="journal-title">' +
         p.settings.title +
-        '</p><div class="field-notes"><article><h2>The mosquito</h2><p>Long legs. Pointy nose. Uninvited. Tap to swat it before its bite ring runs out.</p></article><article><h2>The firefly</h2><p>A golden glow means a friend. Let it float past; it will never bite.</p></article><article><h2>Your spider ally</h2><p>Draw a closed loop around a spider. It weaves at its dotted perch. Each web holds three mosquitoes.</p></article><article><h2>The darter</h2><p>A gold ring warns of a quick dive. Found in the treehouse stages. Catch it during the wind-up.</p></article></div><h2 class="section-title">Little victories</h2><div class="achievement-list">';
+        '</p><div class="field-notes"><article><h2>The mosquito</h2><p>Long legs. Pointy nose. Uninvited. Tap to swat it before its bite ring runs out.</p></article><article><h2>The firefly</h2><p>A golden glow means a friend. Let it float past; it will never bite.</p></article><article><h2>Your spider ally</h2><p>Draw a closed loop around a spider. It weaves at its dotted perch. Each web holds three mosquitoes.</p></article><article><h2>The fly</h2><p>Round body, red eyes, short legs. From Chapter 3, swat these non-biting visitors for the same points and quota credit as mosquitoes.</p></article><article><h2>Citronella wristband</h2><p>Clear two consecutive stages without a mosquito sting to earn a yellow-green wristband. Bugs stay off your wrist and hand; a forearm sting removes it. Protection carries across stages and saves.</p></article><article><h2>The darter</h2><p>A gold ring warns of a quick dive. Found in the treehouse stages. Catch it during the wind-up.</p></article></div><h2 class="section-title">Little victories</h2><div class="achievement-list">';
     Picnic.ACHIEVEMENTS.forEach(function (a) {
       var earned = p.achievements.indexOf(a.id) >= 0;
       html +=
@@ -3094,12 +3150,12 @@
     });
     if (p.achievements.indexOf("sunset") >= 0) {
       var scene = 0;
-      for (var i = 0; i < 4; i++)
+      for (var i = 0; i < TOTAL_LEVELS / 2; i++)
         if (
           p.completed.indexOf(i * 2 + 1) >= 0 &&
           p.completed.indexOf(i * 2 + 2) >= 0
         ) {
-          scene = i;
+          scene = Picnic.STAGES[i * 2].scene;
           break;
         }
       html +=
@@ -3261,8 +3317,15 @@
         ? combo + " streak · ×" + Math.min(1 + (combo - 1) * 0.1, 3).toFixed(1)
         : "Ready to swat";
   }
+  function renderBand() {
+    document.getElementById("bandStatus").textContent = profile.data.citronella.band
+      ? "Citronella wristband · wrist & hand protected"
+      : "Wristband: clear 2 consecutive stages without a sting";
+  }
   function renderHud() {
-    elLvl.textContent = level;
+    renderBand();
+    elLvl.textContent = Math.ceil(level / 2);
+    document.getElementById("stageNum").textContent = ((level - 1) % 2) + 1;
     elScore.textContent = score;
     elScene.textContent =
       Picnic.STAGES[level - 1].name + (settings.assist ? " · Gentle" : "");

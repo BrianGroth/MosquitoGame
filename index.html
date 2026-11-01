@@ -27,7 +27,7 @@
           </svg>
         </button>
         <div class="hcell" style="flex: 1 1 auto">
-          <span class="hlabel">Level <span id="lvlNum">1</span>/8</span>
+          <span class="hlabel">Chapter <span id="lvlNum">1</span>/6 · Stage <span id="stageNum">1</span>/2</span>
           <span id="sceneName">Amsterdam Canal</span>
         </div>
         <div class="hcell" style="flex: 0 0 auto; align-items: center">
@@ -43,13 +43,14 @@
         <span id="quotaText">0 / 5 cleared</span
         ><span id="comboText">Ready to swat</span>
       </div>
+      <div id="bandStatus" role="status"></div>
       <div id="progWrap"><div id="prog"></div></div>
     </header>
 
     <main id="stage">
       <canvas
         id="game"
-        aria-label="Game area. Tap mosquitoes; draw a loop around spiders to weave webs."
+        aria-label="Game area. Tap mosquitoes and red-eyed flies; draw a loop around spiders to weave webs."
       ></canvas>
       <div id="coach" hidden role="status"></div>
       <div id="toast" role="status" aria-live="polite"></div>

@@ -51,16 +51,16 @@ test("web lifetime achievements cross threshold exactly once and persist", () =>
   assert.deepEqual(p.event("web"), []);
   assert.equal(create(storage).data.lifetime.webs, 26);
 });
-test("all 24 standard medals unlock mastery; assist completion cannot", () => {
+test("all 36 standard medals unlock mastery; assist completion cannot", () => {
   const p = create(memory());
-  for (let n = 1; n <= 8; n++)
-    p.complete(n, result({ streak: 30, webs: 3 }), true);
+  for (let n = 1; n <= STAGES.length; n++)
+    p.complete(n, result({ streak: 30, webs: 5 }), true);
   assert.ok(p.data.achievements.includes("picnic"));
   assert.ok(!p.data.achievements.includes("master"));
-  for (let n = 1; n <= 8; n++)
-    p.complete(n, result({ streak: 30, webs: 3 }), false);
+  for (let n = 1; n <= STAGES.length; n++)
+    p.complete(n, result({ streak: 30, webs: 5 }), false);
   assert.ok(p.data.achievements.includes("master"));
-  assert.equal(p.data.active, 8);
+  assert.equal(p.data.active, STAGES.length);
 });
 test("storage denial preserves playable session and communicates failure", () => {
   const p = create({
@@ -108,4 +108,49 @@ test("every technique medal is possible within its stage quota", () => {
     if (s.goal === "streak" || s.goal === "web")
       assert.ok(s.target <= 5 + 2 * i);
   });
+});
+
+test("six chapters have two stages each and stage eight unlocks chapter five", () => {
+  assert.equal(STAGES.length, 12);
+  for (let i = 0; i < 12; i += 2) assert.equal(STAGES[i].chapter, STAGES[i + 1].chapter);
+  const p = create(memory());
+  p.complete(8, result(), false);
+  assert.equal(p.data.unlocked, 9);
+  assert.ok(!p.data.achievements.includes("picnic"));
+});
+test("old completed campaign retains records and unlocks the extension", () => {
+  const p = clean({ version: 1, unlocked: 8, active: 8, completed: [1,2,3,4,5,6,7,8],
+    records: { "normal:8": { score: 456, streak: 10, medals: [true,true,true] } } });
+  assert.equal(p.unlocked, 9);
+  assert.equal(p.records["normal:8"].score, 456);
+  assert.deepEqual(p.citronella, { band: false, cleanStage: 0 });
+});
+test("wristband requires consecutive clean stages, persists, and is lost on sting", () => {
+  const storage = memory(), p = create(storage);
+  assert.equal(p.complete(1, result(), false).bandEarned, false);
+  assert.equal(p.complete(1, result(), false).bandEarned, false);
+  assert.equal(p.complete(2, result(), false).bandEarned, true);
+  const restored = create(storage);
+  assert.equal(restored.data.citronella.band, true);
+  assert.equal(restored.sting(), true);
+  assert.equal(create(storage).data.citronella.band, false);
+  restored.complete(3, result({ bites: 1 }), false);
+  assert.equal(restored.complete(4, result(), false).bandEarned, false);
+  assert.equal(restored.complete(5, result(), false).bandEarned, true);
+});
+test("skipped stages and failed attempts break the clean run", () => {
+  const p = create(memory());
+  p.complete(1, result(), false);
+  assert.equal(p.complete(3, result(), false).bandEarned, false);
+  p.breakCleanRun();
+  assert.equal(p.complete(4, result(), false).bandEarned, false);
+  assert.equal(p.complete(5, result(), false).bandEarned, true);
+});
+test("new stage records survive reload and final stage ends progression", () => {
+  const storage = memory(), p = create(storage);
+  p.complete(12, result(), false);
+  const restored = create(storage);
+  assert.equal(restored.data.unlocked, 12);
+  assert.equal(restored.data.active, 12);
+  assert.equal(restored.data.records["normal:12"].score, 235);
 });
