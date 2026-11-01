@@ -117,6 +117,25 @@
       hint: "Use both spiders, and keep watching your exposed forearm.",
     },
   ];
+  // Keep encounter unlocks tied to campaign stages, while starting the
+  // numerical curve two steps higher (new Stage 1 = former Stage 3).
+  function stageConfig(L, assist) {
+    var difficulty = L + 2;
+    var i = difficulty - 1;
+    var swarmEvery = Math.max(6, 15 - 1.5 * (difficulty - 3));
+    return {
+      quota: 5 + 2 * i,
+      speed: (55 + 20 * i) * (assist ? 0.72 : 1),
+      concurrent: Math.min(2 + Math.floor(i * 0.8), 10),
+      spawnGap: Math.max(0.35, 1.4 - 0.14 * i),
+      biteTime: Math.max(1, 2.4 - 0.18 * i) * (assist ? 1.55 : 1),
+      wander: Math.max(0.6, 2.6 - 0.25 * i),
+      swarmEvery: STAGES[L - 1].waves ? Math.min(7, swarmEvery) : swarmEvery,
+      swarmSize: Math.min(3 + Math.floor((difficulty - 3) / 2), 8),
+      fireflies: Math.min(1 + Math.floor(i / 2), 4),
+      spiders: difficulty >= 6 ? 2 : 1,
+    };
+  }
   var ACHIEVEMENTS = [
     {
       id: "first",
@@ -489,6 +508,7 @@
   }
   var api = {
     STAGES: STAGES,
+    stageConfig: stageConfig,
     ACHIEVEMENTS: ACHIEVEMENTS,
     create: create,
     clean: clean,

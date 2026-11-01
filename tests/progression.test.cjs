@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { create, clean, STAGES } = require("../progression.js");
+const { create, clean, STAGES, stageConfig } = require("../progression.js");
 function memory() {
   let data = {};
   return { getItem: (k) => data[k] || null, setItem: (k, v) => (data[k] = v) };
@@ -106,7 +106,7 @@ test("restoration validates counters, bounds and cosmetic entitlements", () => {
 test("every technique medal is possible within its stage quota", () => {
   STAGES.forEach((s, i) => {
     if (s.goal === "streak" || s.goal === "web")
-      assert.ok(s.target <= 5 + 2 * i);
+      assert.ok(s.target <= stageConfig(i + 1, false).quota);
   });
 });
 
@@ -153,4 +153,42 @@ test("new stage records survive reload and final stage ends progression", () => 
   assert.equal(restored.data.unlocked, 12);
   assert.equal(restored.data.active, 12);
   assert.equal(restored.data.records["normal:12"].score, 235);
+});
+
+test("stage one starts at the former stage three difficulty", () => {
+  const c = stageConfig(1, false);
+  assert.equal(c.quota, 9);
+  assert.equal(c.speed, 95);
+  assert.equal(c.concurrent, 3);
+  assert.ok(Math.abs(c.spawnGap - 1.12) < 1e-9);
+  assert.ok(Math.abs(c.biteTime - 2.04) < 1e-9);
+  assert.ok(Math.abs(c.wander - 2.1) < 1e-9);
+  assert.equal(c.swarmEvery, 15);
+  assert.equal(c.swarmSize, 3);
+  assert.equal(c.fireflies, 2);
+  assert.equal(c.spiders, 1);
+});
+test("every later stage increases speed and quota without easing other pressure", () => {
+  for (const assist of [false, true]) {
+    for (let n = 2; n <= STAGES.length; n++) {
+      const before = stageConfig(n - 1, assist), after = stageConfig(n, assist);
+      assert.ok(after.speed > before.speed);
+      assert.ok(after.quota > before.quota);
+      assert.ok(after.concurrent >= before.concurrent);
+      assert.ok(after.spawnGap <= before.spawnGap);
+      assert.ok(after.biteTime <= before.biteTime);
+      assert.ok(after.wander <= before.wander);
+      assert.ok(after.swarmEvery <= before.swarmEvery);
+      assert.ok(after.swarmSize >= before.swarmSize);
+      assert.ok(after.spawnGap >= 0.35 && after.biteTime >= 1);
+    }
+  }
+});
+test("Gentle mode still slows the raised curve and gives longer bite timers", () => {
+  for (let n = 1; n <= STAGES.length; n++) {
+    const normal = stageConfig(n, false), gentle = stageConfig(n, true);
+    assert.equal(gentle.speed, normal.speed * 0.72);
+    assert.equal(gentle.biteTime, normal.biteTime * 1.55);
+    assert.equal(gentle.quota, normal.quota);
+  }
 });

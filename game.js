@@ -25,28 +25,9 @@
     { key: "treehouse", name: "Treehouse" },
   ];
 
-  /* Stage difficulty scales with L (1-12); stage definitions add encounters. */
+  // The campaign starts at the former Stage 3 difficulty, then keeps climbing.
   function levelConfig(L) {
-    var i = L - 1;
-    var assist = settings.assist;
-    return {
-      quota: 5 + 2 * i, // mosquitoes to squash
-      speed: (55 + 20 * i) * (assist ? 0.72 : 1), // px/sec cruising speed
-      concurrent: Math.min(2 + Math.floor(i * 0.8), 10),
-      spawnGap: Math.max(0.35, 1.4 - 0.14 * i), // sec between spawns
-      biteTime: Math.max(1.0, 2.4 - 0.18 * i) * (assist ? 1.55 : 1), // sec to swat a biter
-      wander: Math.max(0.6, 2.6 - 0.25 * i), // sec of free flight before it dives
-      // swarms arrive from level 3, more often and larger as you go
-      swarmEvery: Picnic.STAGES[i].waves
-        ? 7
-        : L < 3
-          ? 0
-          : Math.max(6.0, 15.0 - 1.5 * (L - 3)),
-      swarmSize: Math.min(3 + Math.floor((L - 3) / 2), 8),
-      // friendly bugs share the screen and must NOT be squashed
-      fireflies: Math.min(1 + Math.floor(i / 2), 4),
-      spiders: L >= 6 ? 2 : 1,
-    };
+    return Picnic.stageConfig(L, settings.assist);
   }
 
   // ---------------------------------------------------------------- elements
@@ -2277,7 +2258,7 @@
         spawnTimer = cfg.spawnGap;
       }
 
-      // swarms, from level 3
+      // Swarms are part of the higher starting difficulty.
       if (cfg.swarmEvery > 0) {
         swarmTimer -= dt;
         if (swarmTimer <= 0) {
