@@ -1,6 +1,6 @@
 /* All paths are scope-relative, including GitHub Pages /MosquitoGame/. */
 "use strict";
-const CACHE = "lories-picnic-v3";
+const CACHE = "lories-picnic-v4";
 const ASSETS = [
   "./",
   "./index.html",
