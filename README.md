@@ -33,7 +33,11 @@ starts with five health and its own score; Continue resumes at a **stage boundar
 - Circle an idle spider to weave at its visible dotted perch. A finished web
   attracts nearby mosquitoes and holds three catches, including reserved catches
   still being consumed. Its knots show remaining capacity.
-- Later encounters add swarms with entry-side warnings, lakeside gusts and
+- Stage 1 starts at the former Stage 3 difficulty: a quota of 9 bugs,
+  95 px/second flight speed, up to 3 regular bugs on screen, and swarms.
+  Every later stage raises speed and quota; spawn gaps, bite timers and swarm
+  intervals tighten to their limits. Gentle mode still slows this higher curve.
+- Swarms have entry-side warnings. Later encounters add lakeside gusts and
   gold-ringed darters that wind up before diving.
 - From Chapter 3 (stage 5), every fifth arriving bug is a red-eyed fly. Flies
   do not sting, but need squashing; they earn the same swat points, streak and
