@@ -1195,4 +1195,17 @@ body.menu #overlay {
   color: #426431;
 }
 
-#bandStatus { padding: 0 12px 5px; font-size: 10px; color: #d5e85b; text-align: center; }
+#bandStatus { padding: 0 12px 5px; font-size: 10px; color: #22e86a; text-align: center; }
+
+.wristband-reward {
+  margin: 16px 0;
+  padding: 16px;
+  border: 2px solid #22e86a;
+  border-radius: 14px;
+  background: #123e28;
+  color: #effff4;
+  text-align: center;
+}
+.wristband-reward b { display: block; color: #66ff99; font-size: 18px; }
+.wristband-reward p { margin: 8px 0; line-height: 1.5; }
+.wristband-reward small { color: #c1e8ce; }
