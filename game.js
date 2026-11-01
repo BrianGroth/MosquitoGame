@@ -1905,8 +1905,8 @@
     ctx.clip();
 
     if (state !== "tutorial" && profile.data.citronella.band) {
-      ctx.fillStyle = "#d5e85b";
-      ctx.strokeStyle = "#71832d";
+      ctx.fillStyle = "#22e86a";
+      ctx.strokeStyle = "#087d36";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.rect(wristX - th * 0.72, -th * 0.85, th * 0.48, th * 1.7);
@@ -2896,7 +2896,7 @@
       settings.assist,
     );
     renderHud();
-    var names = ["Stage cleared", "No bites", currentStage.skill],
+    var names = ["Stage", "Bites", currentStage.goal === "web" ? "Webs" : currentStage.goal === "streak" ? "Streak" : "Friends"],
       reasons = [
         "Quota complete",
         bitesTaken + " bites taken",
@@ -2941,7 +2941,8 @@
       " · " +
       completion.record.medals.filter(Boolean).length +
       "/3 medals collected</p>";
-    if (completion.bandEarned) html += '<p class="tip">Citronella wristband earned! Your wrist and hand are protected. A sting on your forearm removes it.</p>';
+    if (completion.bandEarned)
+      html += '<aside class="wristband-reward" role="status"><b>🎉 You won a citronella wristband!</b><p>Two stages in a row without a sting! Your green wristband now protects your wrist and hand.</p><small>A sting on your forearm removes it.</small></aside>';
     if (level < TOTAL_LEVELS)
       html +=
         '<button id="btnNext" class="btn">Next stage' +

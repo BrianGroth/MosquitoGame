@@ -39,10 +39,10 @@ starts with five health and its own score; Continue resumes at a **stage boundar
   do not sting, but need squashing; they earn the same swat points, streak and
   quota credit as mosquitoes, including the landing bonus and web catches.
 - Clear two consecutive numbered stages without a mosquito sting to earn a
-  yellow-green citronella wristband. It keeps hostile bugs off the wrist and
+  bright green citronella wristband. It keeps hostile bugs off the wrist and
   hand, while the forearm stays exposed. A forearm sting removes it immediately;
   two new consecutive clean stages earn it again. Replaying the same stage
-  cannot earn it. The band and clean-stage progress persist across saves.
+  cannot earn it. The results page celebrates each newly earned wristband. The band and clean-stage progress persist across saves.
 - Spiders have bright brown bodies and legs to distinguish them from mosquitoes.
 - Pause anytime with the HUD button or Escape. Backgrounding also pauses play.
 
